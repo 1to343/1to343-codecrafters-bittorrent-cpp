@@ -8,28 +8,6 @@
 
 using json = nlohmann::json;
 
-bool is_encoded_list(const std::string& encoded_value) {
-  return encoded_value[0] == 'l' &&
-         encoded_value[encoded_value.size() - 1] == 'e';
-}
-
-std::string get_elem(const std::string& encoded_value, uint& index) {
-  std::string element;
-  if (encoded_value[index] == 'i') {
-    uint last = encoded_value.find("e", index + 1);
-    element = encoded_value.substr(index, last - index + 1);
-    index = last + 1;
-  } else {
-    long long len = 0;
-    uint delim_pos = encoded_value.find(":", index + 1);
-    std::string len_str = encoded_value.substr(index, delim_pos - index);
-    len = stoll(len_str);
-    element = encoded_value.substr(index, delim_pos - index + len + 1);
-    index += delim_pos - index + len + 1;
-  }
-  return element;
-}
-
 bool is_encoded_num(const std::string& encoded_value) {
   if (encoded_value[0] != 'i') {
     return false;
@@ -38,6 +16,11 @@ bool is_encoded_num(const std::string& encoded_value) {
     return false;
   }
   return encoded_value.size() > 2;
+}
+
+bool is_encoded_list(const std::string& encoded_value) {
+  return encoded_value[0] == 'l' &&
+         encoded_value[encoded_value.size() - 1] == 'e';
 }
 
 json decode_bencoded_string(const std::string& encoded_value) {
@@ -51,11 +34,65 @@ json decode_bencoded_string(const std::string& encoded_value) {
     throw std::runtime_error("Invalid encoded value: " + encoded_value);
   }
 }
+
 json decode_bencoded_number(const std::string& encoded_value) {
   const std::string number_str =
       encoded_value.substr(1, encoded_value.size() - 2);
   const long long number = std::stoll(number_str);
   return json(number);
+}
+
+std::string get_elem(const std::string& encoded_value, uint& index) {
+  std::string element;
+  json ans;
+  if (encoded_value[index] == 'i') {
+    uint last = encoded_value.find("e", index + 1);
+    element = encoded_value.substr(index, last - index + 1);
+    ans = decode_bencoded_number(element);
+    index = last + 1;
+  } else if (encoded_value[index] != 'l') {
+    long long len = 0;
+    uint delim_pos = encoded_value.find(":", index + 1);
+    std::string len_str = encoded_value.substr(index, delim_pos - index);
+    len = stoll(len_str);
+    element = encoded_value.substr(index, delim_pos - index + len + 1);
+    ans = decode_bencoded_string(element);
+    index += delim_pos - index + len + 1;
+  } else {
+    std::string encoded_substr = encoded_value.substr(index);
+  }
+  return element;
+}
+
+json decode_bencoded_list(const std::string& encoded_value, uint& index) {
+//  uint index = 1;
+  json arr = json::array();
+  while (encoded_value[index] != 'e') {
+    std::string element;
+    json ans;
+    if (encoded_value[index] == 'i') {
+      uint last = encoded_value.find("e", index + 1);
+      element = encoded_value.substr(index, last - index + 1);
+      ans = decode_bencoded_number(element);
+      index = last + 1;
+    } else if (encoded_value[index] != 'l') {
+      long long len = 0;
+      uint delim_pos = encoded_value.find(":", index + 1);
+      std::string len_str = encoded_value.substr(index, delim_pos - index);
+      len = stoll(len_str);
+      element = encoded_value.substr(index, delim_pos - index + len + 1);
+      ans = decode_bencoded_string(element);
+      index += delim_pos - index + len + 1;
+    } else {
+      std::string encoded_substr = encoded_value.substr(index);
+      uint tmp_index = 1;
+      ans = decode_bencoded_list(encoded_substr, tmp_index);
+      index += tmp_index;
+    }
+    arr.push_back(ans);
+  }
+  ++index;
+  return arr;
 }
 
 json decode_bencoded_value(const std::string& encoded_value) {
@@ -66,16 +103,7 @@ json decode_bencoded_value(const std::string& encoded_value) {
     return decode_bencoded_number(encoded_value);
   } else if (is_encoded_list(encoded_value)) {
     uint index = 1;
-    json arr = json::array();
-    while (index < encoded_value.size() - 1) {
-      std::string encoded_substring = get_elem(encoded_value, index);
-      if (encoded_substring[0] == 'i') {
-        arr.push_back(decode_bencoded_number(encoded_substring));
-      } else {
-        arr.push_back(decode_bencoded_string(encoded_substring));
-      }
-    }
-    return arr;
+    return decode_bencoded_list(encoded_value, index);
   } else {
     throw std::runtime_error("Unhandled encoded value: " + encoded_value);
   }
@@ -110,3 +138,4 @@ int main(int argc, char* argv[]) {
 
   return 0;
 }
+// ll5:helloi1ee4:shiti2ee
