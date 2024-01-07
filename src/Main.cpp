@@ -8,6 +8,16 @@
 
 using json = nlohmann::json;
 
+bool is_encoded_num(const std::string& encoded_value) {
+  if (encoded_value[0] != 'i') {
+    return false;
+  }
+  if (encoded_value[encoded_value.size() - 1] != 'e') {
+    return false;
+  }
+  return encoded_value.size() > 2;
+}
+
 json decode_bencoded_value(const std::string& encoded_value) {
   if (std::isdigit(encoded_value[0])) {
     // Example: "5:hello" -> "hello"
@@ -20,6 +30,11 @@ json decode_bencoded_value(const std::string& encoded_value) {
     } else {
       throw std::runtime_error("Invalid encoded value: " + encoded_value);
     }
+  } else if (is_encoded_num(encoded_value)) {
+    const std::string number_str =
+        encoded_value.substr(1, encoded_value.size() - 2);
+    const long long number = std::stoll(number_str);
+    return json(number);
   } else {
     throw std::runtime_error("Unhandled encoded value: " + encoded_value);
   }
@@ -41,7 +56,7 @@ int main(int argc, char* argv[]) {
     }
     // You can use print statements as follows for debugging, they'll be visible
     // when running tests.
-//    std::cout << "Logs from your program will appear here!" << std::endl;
+    //    std::cout << "Logs from your program will appear here!" << std::endl;
 
     // Uncomment this block to pass the first stage
     std::string encoded_value = argv[2];
