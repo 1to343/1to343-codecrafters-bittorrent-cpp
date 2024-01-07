@@ -9,13 +9,8 @@
 using json = nlohmann::json;
 
 bool is_encoded_list(const std::string& encoded_value) {
-  if (encoded_value[0] != 'l') {
-    return false;
-  }
-  if (encoded_value[encoded_value.size() - 1] != 'e') {
-    return false;
-  }
-  return encoded_value.size() > 2;
+  return encoded_value[0] == 'l' &&
+         encoded_value[encoded_value.size() - 1] == 'e';
 }
 
 std::string get_elem(const std::string& encoded_value, uint& index) {
@@ -74,11 +69,11 @@ json decode_bencoded_value(const std::string& encoded_value) {
     json arr = json::array();
     while (index < encoded_value.size() - 1) {
       std::string encoded_substring = get_elem(encoded_value, index);
-     if (encoded_substring[0] == 'i') {
-       arr.push_back(decode_bencoded_number(encoded_substring));
-     } else {
-       arr.push_back(decode_bencoded_string(encoded_substring));
-     }
+      if (encoded_substring[0] == 'i') {
+        arr.push_back(decode_bencoded_number(encoded_substring));
+      } else {
+        arr.push_back(decode_bencoded_string(encoded_substring));
+      }
     }
     return arr;
   } else {
