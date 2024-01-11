@@ -136,38 +136,38 @@ json decode_bencoded_value(const std::string& encoded_value) {
   }
 }
 
-//int main(int argc, char* argv[]) {
-//  if (argc < 2) {
-//    std::cerr << "Usage: " << argv[0] << " decode <encoded_value>" << std::endl;
-//    return 1;
-//  }
-//
-//  std::string command = argv[1];
-//
-//  if (command == "decode") {
-//    if (argc < 3) {
-//      std::cerr << "Usage: " << argv[0] << " decode <encoded_value>"
-//                << std::endl;
-//      return 1;
-//    }
-//    std::string encoded_value = argv[2];
-//    json decoded_value = decode_bencoded_value(encoded_value);
-//    std::cout << decoded_value.dump() << std::endl;
-//  } else {
-//    std::cerr << "unknown command: " << command << std::endl;
-//    return 1;
-//  }
-//
-//  return 0;
-//}
+int main(int argc, char* argv[]) {
+  if (argc < 2) {
+    std::cerr << "Usage: " << argv[0] << " decode <encoded_value>" << std::endl;
+    return 1;
+  }
 
- int main() {
-   std::string value;
-   std::cin >> value;
-   int len = value.size();
-   json ans = decode_bencoded_value(value);
-   std::cout << ans.dump() << '\n';
- }
+  std::string command = argv[1];
+
+  if (command == "decode") {
+    if (argc < 3) {
+      std::cerr << "Usage: " << argv[0] << " decode <encoded_value>"
+                << std::endl;
+      return 1;
+    }
+    std::string encoded_value = argv[2];
+    json decoded_value = decode_bencoded_value(encoded_value);
+    std::cout << decoded_value.dump() << std::endl;
+  } else {
+    std::cerr << "unknown command: " << command << std::endl;
+    return 1;
+  }
+
+  return 0;
+}
+
+// int main() {
+//   std::string value;
+//   std::cin >> value;
+//   int len = value.size();
+//   json ans = decode_bencoded_value(value);
+//   std::cout << ans.dump() << '\n';
+// }
 //d10:inner_dictd4:key16:value14:key2i42e8:list_keyl5:item15:item2i3eeee
 //  ll5:helloi1ee4:shiti2ee
 //"{\"inner_dict\":{\"key1\":\"value1\",\"key2\":42,\"list_key\":[\"item1\",\"item2\",3]}}\n"
