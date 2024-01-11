@@ -74,49 +74,31 @@ json decode_bencoded_list(const std::string& encoded_value, uint& index) {
 }
 
 json decode_bencoded_dict(const std::string& encoded_value, uint& index) {
-  json dict;
+  json dict = json::object();
   bool done = false;
   json first_val;
   json second_val;
   while (encoded_value[index] != 'e') {
     if (encoded_value[index] == 'i') {
       second_val = decode_bencoded_number(encoded_value, index);
-      auto first = first_val.dump();
-      auto second = second_val.dump();
-      //      std::cout << "first and second " << first << ' ' << second <<
-      //      '\n';
-      dict[first] = second;
+      dict[first_val] = second_val;
       done = false;
     } else if (encoded_value[index] == 'l') {
       second_val = decode_bencoded_list(encoded_value, index);
-      auto first = first_val.dump();
-      auto second = second_val.dump();
-      //      std::cout << "first and second " << first << ' ' << second <<
-      //      '\n';
-      dict[first] = second;
+      dict[first_val] = second_val;
       done = false;
     } else {
       if (done) {
         second_val = decode_bencoded_string(encoded_value, index);
-        auto first = first_val.dump();
-        auto second = second_val.dump();
-        //        std::cout << "first and second " << first << ' ' << second <<
-        //        '\n';
-        dict[first] = second;
+        dict[first_val] = second_val;
         done = false;
       } else {
         first_val = decode_bencoded_string(encoded_value, index);
-        //        json tmp = first_val;
-        //        auto first = tmp.dump();
-        //        std::cout << "only first " << first << '\n';
         done = true;
       }
     }
   }
   ++index;
-  if (dict.empty()) {
-    return json::object();
-  }
   return dict;
 }
 
