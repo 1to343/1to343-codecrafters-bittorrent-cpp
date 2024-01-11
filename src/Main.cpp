@@ -11,6 +11,8 @@
 
 using json = nlohmann::json;
 
+json info_value;
+
 bool is_encoded_num(const std::string& encoded_value) {
   if (encoded_value[0] != 'i') {
     return false;
@@ -149,15 +151,17 @@ std::string bencode_the_string(json info) {
     }
     ans += 'e';
   } else if (info.is_number()) {
-    int data = info;
+    long long data = info;
     ans += 'i';
     ans += std::to_string(data);
     ans += 'e';
-  } else {
+  } else if (info.is_string()) {
     std::string data = info;
-    ans += data.size();
+    ans += std::to_string(data.size());
     ans += ':';
     ans += data;
+  } else {
+    throw std::runtime_error("JSON type not handled");
   }
   return ans;
 }
@@ -181,6 +185,7 @@ std::vector<std::string> parse_torrent_file(const std::string& filename) {
   std::string announce = torrent["announce"];
   res.push_back("Tracker URL: " + announce);
   auto info = torrent["info"];
+  info_value = info;
   std::string length = std::to_string(info["length"].template get<int>());
   res.push_back("Length: " + length);
   std::string info_hash = string_to_sha1(bencode_the_string(info));
@@ -230,7 +235,3 @@ int main(int argc, char* argv[]) {
 //   json ans = decode_bencoded_value(value);
 //   std::cout << ans.dump() << '\n';
 // }
-// d10:inner_dictd4:key16:value14:key2i42e8:list_keyl5:item15:item2i3eeee
-//  ll5:helloi1ee4:shiti2ee
-//"{\"inner_dict\":{\"key1\":\"value1\",\"key2\":42,\"list_key\":[\"item1\",\"item2\",3]}}\n"
-//"{\"inner_dict\":{\"key1\":\"value1\",\"key2\":42,\"list_key\":[[\"item1\",\"item2\",3]]}}\n"
