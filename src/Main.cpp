@@ -1,5 +1,6 @@
 #include <cctype>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -29,7 +30,7 @@ bool is_encoded_dict(const std::string& encoded_value) {
 }
 
 json decode_bencoded_string(const std::string& encoded_value, uint& index) {
-//  std::cout << index << " str\n";
+  //  std::cout << index << " str\n";
   size_t colon_index = encoded_value.find(':', index);
   if (colon_index != std::string::npos) {
     std::string number_string =
@@ -44,7 +45,7 @@ json decode_bencoded_string(const std::string& encoded_value, uint& index) {
 }
 
 json decode_bencoded_number(const std::string& encoded_value, uint& index) {
-//  std::cout << index << " num\n";
+  //  std::cout << index << " num\n";
   uint last = encoded_value.find('e', index);
   const std::string number_str =
       encoded_value.substr(index + 1, last - index - 1);
@@ -81,8 +82,8 @@ json decode_bencoded_dict(const std::string& encoded_value, uint& index) {
   while (index < encoded_value.size() && encoded_value[index] != 'e') {
     if (encoded_value[index] == 'i') {
       second_val = decode_bencoded_number(encoded_value, index);
-//      json tmp = second_val;
-//      auto got = tmp.dump();
+      //      json tmp = second_val;
+      //      auto got = tmp.dump();
       dict[first_val] = second_val;
       done = false;
     } else if (encoded_value[index] == 'l') {
@@ -95,21 +96,21 @@ json decode_bencoded_dict(const std::string& encoded_value, uint& index) {
     } else if (encoded_value[index] == 'd') {
       ++index;
       second_val = decode_bencoded_dict(encoded_value, index);
-//      json tmp = second_val;
-//      auto got = tmp.dump();
+      //      json tmp = second_val;
+      //      auto got = tmp.dump();
       dict[first_val] = second_val;
       done = false;
     } else {
       if (done) {
         second_val = decode_bencoded_string(encoded_value, index);
-//        json tmp = second_val;
-//        auto got = tmp.dump();
+        //        json tmp = second_val;
+        //        auto got = tmp.dump();
         dict[first_val] = second_val;
         done = false;
       } else {
         first_val = decode_bencoded_string(encoded_value, index);
-//        json tmp = first_val;
-//        auto got = tmp.dump();
+        //        json tmp = first_val;
+        //        auto got = tmp.dump();
         done = true;
       }
     }
@@ -136,6 +137,24 @@ json decode_bencoded_value(const std::string& encoded_value) {
   }
 }
 
+std::vector<std::string> parse_torrent_file(const std::string& filename) {
+  std::vector<std::string> res;
+  std::fstream fs;
+  fs.open(filename, std::ios::in | std::ios::binary);
+  if (!fs.is_open()) {
+    throw std::runtime_error("Cannot open file: " + filename);
+  }
+  std::istreambuf_iterator<char> it{fs}, end;
+  std::string buffer(it, end);
+  auto torrent = decode_bencoded_value(buffer);
+  std::string announce = torrent["announce"];
+  res.push_back("Tracker URL: " + announce);
+  auto info = torrent["info"];
+  std::string length = std::to_string(info["length"].template get<int>());
+  res.push_back("Length: " + length);
+  return res;
+}
+
 int main(int argc, char* argv[]) {
   if (argc < 2) {
     std::cerr << "Usage: " << argv[0] << " decode <encoded_value>" << std::endl;
@@ -153,6 +172,17 @@ int main(int argc, char* argv[]) {
     std::string encoded_value = argv[2];
     json decoded_value = decode_bencoded_value(encoded_value);
     std::cout << decoded_value.dump() << std::endl;
+  } else if (command == "info") {
+    if (argc < 3) {
+      std::cerr << "Usage: " << argv[0] << " info <file>"
+                << std::endl;
+      return 1;
+    }
+    std::string file = argv[2];
+    std::vector<std::string> info = parse_torrent_file(file);
+    for (const auto& i : info) {
+      std::cout << i << '\n';
+    }
   } else {
     std::cerr << "unknown command: " << command << std::endl;
     return 1;
@@ -168,7 +198,7 @@ int main(int argc, char* argv[]) {
 //   json ans = decode_bencoded_value(value);
 //   std::cout << ans.dump() << '\n';
 // }
-//d10:inner_dictd4:key16:value14:key2i42e8:list_keyl5:item15:item2i3eeee
+// d10:inner_dictd4:key16:value14:key2i42e8:list_keyl5:item15:item2i3eeee
 //  ll5:helloi1ee4:shiti2ee
 //"{\"inner_dict\":{\"key1\":\"value1\",\"key2\":42,\"list_key\":[\"item1\",\"item2\",3]}}\n"
 //"{\"inner_dict\":{\"key1\":\"value1\",\"key2\":42,\"list_key\":[[\"item1\",\"item2\",3]]}}\n"
