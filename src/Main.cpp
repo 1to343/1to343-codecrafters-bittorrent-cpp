@@ -121,6 +121,7 @@ json decode_bencoded_value(const std::string& encoded_value) {
   uint index = 1;
   if (std::isdigit(encoded_value[0])) {
     // Example: "5:hello" -> "hello"
+    --index;
     return decode_bencoded_string(encoded_value, index);
   } else if (is_encoded_num(encoded_value)) {
     index = 0;
