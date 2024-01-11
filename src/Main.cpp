@@ -55,7 +55,7 @@ json decode_bencoded_number(const std::string& encoded_value, uint& index) {
 
 json decode_bencoded_list(const std::string& encoded_value, uint& index) {
   json arr = json::array();
-  while (encoded_value[index] != 'e') {
+  while (index < encoded_value.size() && encoded_value[index] != 'e') {
     json ans;
     if (encoded_value[index] == 'i') {
       ans = decode_bencoded_number(encoded_value, index);
@@ -78,22 +78,37 @@ json decode_bencoded_dict(const std::string& encoded_value, uint& index) {
   bool done = false;
   json first_val;
   json second_val;
-  while (encoded_value[index] != 'e') {
+  while (index < encoded_value.size() && encoded_value[index] != 'e') {
     if (encoded_value[index] == 'i') {
       second_val = decode_bencoded_number(encoded_value, index);
+//      json tmp = second_val;
+//      auto got = tmp.dump();
       dict[first_val] = second_val;
       done = false;
     } else if (encoded_value[index] == 'l') {
       second_val = decode_bencoded_list(encoded_value, index);
+//      json tmp = second_val;
+//      auto got = tmp.dump();
+      dict[first_val] = second_val;
+      done = false;
+    } else if (encoded_value[index] == 'd') {
+      ++index;
+      second_val = decode_bencoded_dict(encoded_value, index);
+//      json tmp = second_val;
+//      auto got = tmp.dump();
       dict[first_val] = second_val;
       done = false;
     } else {
       if (done) {
         second_val = decode_bencoded_string(encoded_value, index);
+//        json tmp = second_val;
+//        auto got = tmp.dump();
         dict[first_val] = second_val;
         done = false;
       } else {
         first_val = decode_bencoded_string(encoded_value, index);
+//        json tmp = first_val;
+//        auto got = tmp.dump();
         done = true;
       }
     }
@@ -138,6 +153,7 @@ int main(int argc, char* argv[]) {
         // when running tests.
         //    std::cout << "Logs from your program will appear here!" <<
 //        std::endl;
+//        std::endl;
 
     // Uncomment this block to pass the first_val stage
     std::string encoded_value = argv[2];
@@ -154,6 +170,7 @@ int main(int argc, char* argv[]) {
 // int main() {
 //   std::string value;
 //   std::cin >> value;
+//   int len = value.size();
 //   json ans = decode_bencoded_value(value);
 //   std::cout << ans.dump() << '\n';
 // }
