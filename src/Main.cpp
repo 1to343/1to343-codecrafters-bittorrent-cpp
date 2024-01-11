@@ -114,6 +114,9 @@ json decode_bencoded_dict(const std::string& encoded_value, uint& index) {
     }
   }
   ++index;
+  if (dict.empty()) {
+    return json::object();
+  }
   return dict;
 }
 
