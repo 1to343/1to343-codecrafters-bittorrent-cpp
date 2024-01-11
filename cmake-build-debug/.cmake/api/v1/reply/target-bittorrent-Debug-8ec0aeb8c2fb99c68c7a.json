@@ -89,7 +89,8 @@
 			"name" : "Header Files",
 			"sourceIndexes" : 
 			[
-				1
+				1,
+				2
 			]
 		}
 	],
@@ -104,6 +105,11 @@
 		{
 			"backtrace" : 1,
 			"path" : "src/lib/nlohmann/json.hpp",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/lib/sha1.hpp",
 			"sourceGroupIndex" : 1
 		}
 	],

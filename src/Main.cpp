@@ -2,10 +2,12 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <string>
 #include <vector>
 
 #include "lib/nlohmann/json.hpp"
+#include "lib/sha1.hpp"
 
 using json = nlohmann::json;
 
@@ -82,8 +84,6 @@ json decode_bencoded_dict(const std::string& encoded_value, uint& index) {
   while (index < encoded_value.size() && encoded_value[index] != 'e') {
     if (encoded_value[index] == 'i') {
       second_val = decode_bencoded_number(encoded_value, index);
-      //      json tmp = second_val;
-      //      auto got = tmp.dump();
       dict[first_val] = second_val;
       done = false;
     } else if (encoded_value[index] == 'l') {
@@ -96,21 +96,15 @@ json decode_bencoded_dict(const std::string& encoded_value, uint& index) {
     } else if (encoded_value[index] == 'd') {
       ++index;
       second_val = decode_bencoded_dict(encoded_value, index);
-      //      json tmp = second_val;
-      //      auto got = tmp.dump();
       dict[first_val] = second_val;
       done = false;
     } else {
       if (done) {
         second_val = decode_bencoded_string(encoded_value, index);
-        //        json tmp = second_val;
-        //        auto got = tmp.dump();
         dict[first_val] = second_val;
         done = false;
       } else {
         first_val = decode_bencoded_string(encoded_value, index);
-        //        json tmp = first_val;
-        //        auto got = tmp.dump();
         done = true;
       }
     }
@@ -137,6 +131,43 @@ json decode_bencoded_value(const std::string& encoded_value) {
   }
 }
 
+std::string bencode_the_string(json info) {
+  std::string ans = "";
+  if (info.is_object()) {
+    std::map<std::string, json> data = info;
+    ans += 'd';
+    for (auto& [key, value] : data) {
+      ans += bencode_the_string(key);
+      ans += bencode_the_string(value);
+    }
+    ans += 'e';
+  } else if (info.is_array()) {
+    std::vector<json> data = info;
+    ans += 'l';
+    for (auto& item : data) {
+      ans += bencode_the_string(item);
+    }
+    ans += 'e';
+  } else if (info.is_number()) {
+    int data = info;
+    ans += 'i';
+    ans += std::to_string(data);
+    ans += 'e';
+  } else {
+    std::string data = info;
+    ans += data.size();
+    ans += ':';
+    ans += data;
+  }
+  return ans;
+}
+std::string string_to_sha1(const std::string& data) {
+  SHA1 cipher;
+  cipher.update(data);
+  std::string ans = cipher.final();
+  return ans;
+}
+
 std::vector<std::string> parse_torrent_file(const std::string& filename) {
   std::vector<std::string> res;
   std::fstream fs;
@@ -152,6 +183,8 @@ std::vector<std::string> parse_torrent_file(const std::string& filename) {
   auto info = torrent["info"];
   std::string length = std::to_string(info["length"].template get<int>());
   res.push_back("Length: " + length);
+  std::string info_hash = string_to_sha1(bencode_the_string(info));
+  res.push_back("Info Hash: " + info_hash);
   return res;
 }
 
@@ -174,8 +207,7 @@ int main(int argc, char* argv[]) {
     std::cout << decoded_value.dump() << std::endl;
   } else if (command == "info") {
     if (argc < 3) {
-      std::cerr << "Usage: " << argv[0] << " info <file>"
-                << std::endl;
+      std::cerr << "Usage: " << argv[0] << " info <file>" << std::endl;
       return 1;
     }
     std::string file = argv[2];
