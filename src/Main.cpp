@@ -11,7 +11,6 @@
 
 using json = nlohmann::json;
 
-json info_value;
 
 bool is_encoded_num(const std::string& encoded_value) {
   if (encoded_value[0] != 'i') {
@@ -49,7 +48,6 @@ json decode_bencoded_string(const std::string& encoded_value, uint& index) {
 }
 
 json decode_bencoded_number(const std::string& encoded_value, uint& index) {
-  //  std::cout << index << " num\n";
   uint last = encoded_value.find('e', index);
   const std::string number_str =
       encoded_value.substr(index + 1, last - index - 1);
@@ -165,6 +163,7 @@ std::string bencode_the_string(json info) {
   }
   return ans;
 }
+
 std::string string_to_sha1(const std::string& data) {
   SHA1 cipher;
   cipher.update(data);
@@ -185,11 +184,29 @@ std::vector<std::string> parse_torrent_file(const std::string& filename) {
   std::string announce = torrent["announce"];
   res.push_back("Tracker URL: " + announce);
   auto info = torrent["info"];
-  info_value = info;
   std::string length = std::to_string(info["length"].template get<int>());
   res.push_back("Length: " + length);
   std::string info_hash = string_to_sha1(bencode_the_string(info));
   res.push_back("Info Hash: " + info_hash);
+  std::string piece_length = std::to_string(info["piece length"].template get<int>());
+  res.push_back("Piece Length: " + piece_length);
+  res.push_back("Pieces Hashes:");
+  std::string pieces_string = info["pieces"];
+  std::vector<std::string> pieces_hashes;
+  for (uint64_t i = 0; i < pieces_string.size(); i+=20) {
+    pieces_hashes.push_back(pieces_string.substr(i, 20));
+  }
+  std::stringstream ss;
+  for (auto hash: pieces_hashes) {
+    ss.str("");
+    for (unsigned char c: hash) {
+      ss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(c);
+    }
+    if (ss.str().length() != 40) {
+      throw std::runtime_error("Wrong piece hash length: " + ss.str());
+    }
+    res.push_back(ss.str());
+  }
   return res;
 }
 
