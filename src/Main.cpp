@@ -205,7 +205,6 @@ std::vector<std::string> extract_info(const std::string& buffer) {
   for (auto c : info_hash) {
     ss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(c);
   }
-  std::string hexStr = ss.str();
   res.push_back("Info Hash: " + ss.str());
   std::string piece_length =
       std::to_string(info["piece length"].template get<int>());
@@ -228,34 +227,80 @@ std::vector<std::string> parse_torrent_file(const std::string& filename) {
   return res;
 }
 
-//size_t write_callback(void* contents, size_t size, size_t nmemb,
-//                      std::string* output) {
-//  size_t totalSize = size * nmemb;
-//  output->append(static_cast<char*>(contents), totalSize);
-//  return totalSize;
-//}
+json open_torrent_file(std::string filename) {
+  std::fstream fs;
+  fs.open(filename, std::ios::in | std::ios::binary);
+  if (!fs.is_open()) {
+    throw std::runtime_error("Cannot open file: "+filename);
+  }
+  std::istreambuf_iterator<char> it{fs},end;
+  std::string buffer(it,end);
+  auto torrent = decode_bencoded_value(buffer);
+  fs.close();
+  return torrent;
+}
 
-void send_request(const std::vector<std::string>& res) {
+int get_num(unsigned char c) {
+  unsigned int ans;
+  std::stringstream ss;
+  ss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(c);
+  ss >> ans;
+  return ans;
+}
+
+std::vector<std::string> get_ans(const std::string& peers) {
+  class ip {
+   public:
+    std::vector<uint> nums;
+    std::string get_str() {
+      std::string ans;
+      uint last = 0;
+      for (size_t i = 0; i < 4; ++i) {
+        ans += std::to_string(nums[i]);
+        if (i < 3) {
+          ans += '.';
+        } else {
+          ans += ':';
+        }
+      }
+      ans += std::to_string(nums[4] * 256 + nums[5]);
+      return ans;
+    }
+  };
+  ip ip_addr;
+  std::vector<std::string> ans;
+  for (size_t i = 0; i < peers.size(); i += 6) {
+    std::string tmp = peers.substr(i, 6);
+    ip_addr.nums.clear();
+    for (const auto& j : tmp) {
+      ip_addr.nums.push_back(get_num(j));
+    }
+    ans.push_back(ip_addr.get_str());
+  }
+  return ans;
+}
+
+std::vector<std::string> send_request(const std::string& filename) {
   CURL* curl = curl_easy_init();
   std::array<unsigned char, SHA_DIGEST_LENGTH> hash;
   if (!curl) {
     std::cerr << "Failed to initialize cURL" << std::endl;
-    return;
+    return {};
   }
-
-  std::string tracker = res[0].substr(13);
-  std::string info_hash = res[2].substr(12);
+  auto torrent = open_torrent_file(filename);
+  std::string url = torrent["announce"];
+  auto info = torrent["info"];
+  std::string bencoded_info = bencode_the_string(info);
   std::string peer_id = "00112233445566778899";
   size_t port = 6881;
   size_t uploaded = 0;
   size_t downloaded = 0;
-  size_t left = std::stoul(res[1].substr(8));
+  size_t left = std::stoul(std::to_string(info["length"].template get<int>()));
   size_t compact = 1;
   std::string response;
-  SHA1(reinterpret_cast<const unsigned char*>(info_hash.c_str()),
-       info_hash.size(), hash.data());
-  std::string url = tracker + '?';
-  url += "info_hash=";
+  url += "?info_hash=";
+  SHA1(reinterpret_cast<const unsigned char*>(bencoded_info.c_str()),
+       bencoded_info.size(), hash.data());
   char* encoded_info_hash = curl_easy_escape(
       curl, reinterpret_cast<const char*>(hash.data()), SHA_DIGEST_LENGTH);
   url += std::string(encoded_info_hash);
@@ -286,7 +331,12 @@ void send_request(const std::vector<std::string>& res) {
   }
   curl_free(encoded_info_hash);
   curl_easy_cleanup(curl);
-  std::cout << decode_bencoded_value(response).dump();
+
+  auto data = decode_bencoded_value(response);
+  std::string peers = data.at("peers").template get<std::string>();
+  get_num(peers[0]);
+  return get_ans(peers);
+//  std::cout << peers << '\n';
 }
 
 int main(int argc, char* argv[]) {
@@ -316,16 +366,16 @@ int main(int argc, char* argv[]) {
     for (const auto& i : info) {
       std::cout << i << '\n';
     }
-//    std::cout << info[0] << '\n';
-//    send_request(info);
   } else if (command == "peers") {
     if (argc < 3) {
       std::cerr << "Usage: " << argv[0] << " info <file>" << std::endl;
       return 1;
     }
     std::string file = argv[2];
-    std::vector<std::string> info = parse_torrent_file(file);
-    send_request(info);
+    auto peers = send_request(file);
+    for (auto peer : peers) {
+      std::cout << peer << '\n';
+    }
   } else {
       std::cerr << "unknown command: " << command << std::endl;
       return 1;
