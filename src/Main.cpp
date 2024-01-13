@@ -318,9 +318,17 @@ int main(int argc, char* argv[]) {
     }
 //    std::cout << info[0] << '\n';
 //    send_request(info);
+  } else if (command == "peers") {
+    if (argc < 3) {
+      std::cerr << "Usage: " << argv[0] << " info <file>" << std::endl;
+      return 1;
+    }
+    std::string file = argv[2];
+    std::vector<std::string> info = parse_torrent_file(file);
+    send_request(info);
   } else {
-    std::cerr << "unknown command: " << command << std::endl;
-    return 1;
+      std::cerr << "unknown command: " << command << std::endl;
+      return 1;
   }
 
   return 0;
