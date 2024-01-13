@@ -313,11 +313,11 @@ int main(int argc, char* argv[]) {
     }
     std::string file = argv[2];
     std::vector<std::string> info = parse_torrent_file(file);
-//    for (const auto& i : info) {
-//      std::cout << i << '\n';
-//    }
-    std::cout << info[0] << '\n';
-    send_request(info);
+    for (const auto& i : info) {
+      std::cout << i << '\n';
+    }
+//    std::cout << info[0] << '\n';
+//    send_request(info);
   } else {
     std::cerr << "unknown command: " << command << std::endl;
     return 1;
