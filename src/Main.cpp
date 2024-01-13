@@ -228,12 +228,12 @@ std::vector<std::string> parse_torrent_file(const std::string& filename) {
   return res;
 }
 
-size_t write_callback(void* contents, size_t size, size_t nmemb,
-                      std::string* output) {
-  size_t totalSize = size * nmemb;
-  output->append(static_cast<char*>(contents), totalSize);
-  return totalSize;
-}
+//size_t write_callback(void* contents, size_t size, size_t nmemb,
+//                      std::string* output) {
+//  size_t totalSize = size * nmemb;
+//  output->append(static_cast<char*>(contents), totalSize);
+//  return totalSize;
+//}
 
 void send_request(const std::vector<std::string>& res) {
   CURL* curl = curl_easy_init();
@@ -271,6 +271,11 @@ void send_request(const std::vector<std::string>& res) {
   url += std::to_string(left);
   url += "&compact=";
   url += std::to_string(compact);
+//  std::cout << url << " url\n";
+  auto write_callback = +[](char *contents, size_t size, size_t nmemb, void *userp)-> size_t {
+    ((std::string*)userp)->append((char*)contents,size*nmemb);
+    return size*nmemb;
+  };
   curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
   curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
@@ -311,6 +316,7 @@ int main(int argc, char* argv[]) {
 //    for (const auto& i : info) {
 //      std::cout << i << '\n';
 //    }
+    std::cout << info[0] << '\n';
     send_request(info);
   } else {
     std::cerr << "unknown command: " << command << std::endl;
