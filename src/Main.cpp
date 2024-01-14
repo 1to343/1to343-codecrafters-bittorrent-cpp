@@ -409,7 +409,7 @@ void establishConnection(const std::string& filename, const std::string& peer) {
     } else {
       buffer[bytesRead] = '\0';
     }
-    std::string recv_peer_id(buffer + 48, buffer + 67);
+    std::string recv_peer_id(buffer + 48, buffer + 68);
     std::stringstream ss;
     for (unsigned char c : recv_peer_id) {
       ss << std::hex << std::setfill('0') << std::setw(2)
