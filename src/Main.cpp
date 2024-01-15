@@ -7,7 +7,6 @@
 
 #include <cctype>
 #include <cstdlib>
-#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -46,7 +45,7 @@ json decodeBencodedString(const std::string& encoded_value, uint& index) {
     int64_t number = std::atoll(number_string.c_str());
     std::string str = encoded_value.substr(colon_index + 1, number);
     index = colon_index + str.size() + 1;
-    return json(str);
+    return json{str};
   } else {
     throw std::runtime_error("Invalid encoded value: " + encoded_value);
   }
@@ -58,7 +57,7 @@ json decodeBencodedNum(const std::string& encoded_value, uint& index) {
       encoded_value.substr(index + 1, last - index - 1);
   index = last + 1;
   const long long number = std::stoll(number_str);
-  return json(number);
+  return json{number};
 }
 
 json decodeBencodedList(const std::string& encoded_value, uint& index) {
@@ -137,8 +136,8 @@ json decodeBencodedValue(const std::string& encoded_value) {
   }
 }
 
-std::string bencodeTheString(json info) {
-  std::string ans = "";
+std::string bencodeTheString(const json& info) {
+  std::string ans;
   if (info.is_object()) {
     std::map<std::string, json> data = info;
     ans += 'd';
@@ -232,7 +231,7 @@ std::vector<std::string> parseTorrentFile(const std::string& filename) {
   return res;
 }
 
-json openTorrentFile(std::string filename) {
+json openTorrentFile(const std::string& filename) {
   std::fstream fs;
   fs.open(filename, std::ios::in | std::ios::binary);
   if (!fs.is_open()) {
@@ -246,7 +245,7 @@ json openTorrentFile(std::string filename) {
 }
 
 
-int getNum(unsigned char c) {
+unsigned int getNum(unsigned char c) {
   unsigned int ans;
   std::stringstream ss;
   ss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(c);
@@ -260,7 +259,6 @@ std::vector<std::string> getAns(const std::string& peers) {
     std::vector<uint> nums;
     std::string get_str() {
       std::string ans;
-      uint last = 0;
       for (size_t i = 0; i < 4; ++i) {
         ans += std::to_string(nums[i]);
         if (i < 3) {
@@ -388,7 +386,7 @@ void establishConnection(const std::string& filename, const std::string& peer) {
   std::string info_hash = getInfoHash(filename);
   unsigned char length = 19;
   std::string protocol = "BitTorrent protocol";
-  std::array<unsigned char, 8> reserved;
+  std::array<unsigned char, 8> reserved{};
   reserved.fill(0);
   std::string peer_id = "00112233445566778899";
   std::vector<unsigned char> msg;
@@ -453,7 +451,7 @@ int main(int argc, char* argv[]) {
     }
     std::string file = argv[2];
     auto peers = sendRequest(file);
-    for (auto peer : peers) {
+    for (const auto& peer : peers) {
       std::cout << peer << '\n';
     }
   } else if (command == "handshake") {
