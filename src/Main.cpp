@@ -117,7 +117,6 @@ json decodeBencodedDict(const std::string& encoded_value, uint& index) {
   return dict;
 }
 
-
 json decodeBencodedValue(const std::string& encoded_value) {
   uint index = 1;
   if (std::isdigit(encoded_value[0])) {
@@ -231,7 +230,8 @@ std::vector<std::string> parseTorrentFile(const std::string& filename) {
   return res;
 }
 
-json openTorrentFile(const std::string& filename) {
+json openTorrentFile(std::string filename) {
+  std::vector<std::string> res;
   std::fstream fs;
   fs.open(filename, std::ios::in | std::ios::binary);
   if (!fs.is_open()) {
@@ -239,11 +239,11 @@ json openTorrentFile(const std::string& filename) {
   }
   std::istreambuf_iterator<char> it{fs}, end;
   std::string buffer(it, end);
+  std::cout << "problem here\n";
   auto torrent = decodeBencodedValue(buffer);
-  fs.close();
+//  fs.close();
   return torrent;
 }
-
 
 unsigned int getNum(unsigned char c) {
   unsigned int ans;
@@ -292,6 +292,7 @@ std::vector<std::string> sendRequest(const std::string& filename) {
     return {};
   }
   auto torrent = openTorrentFile(filename);
+  std::cout << "trouble\n";
   std::string url = torrent["announce"];
   auto info = torrent["info"];
   std::string bencoded_info = bencodeTheString(info);
@@ -352,7 +353,8 @@ std::string getInfoHash(const std::string& filename) {
   SHA1(reinterpret_cast<const unsigned char*>(bencoded_info.c_str()),
        bencoded_info.size(), hash.data());
   std::string raw_hash;
-  std::copy(hash.begin(),hash.end(),std::back_insert_iterator<std::string>(raw_hash));
+  std::copy(hash.begin(), hash.end(),
+            std::back_insert_iterator<std::string>(raw_hash));
   return raw_hash;
 }
 
@@ -362,26 +364,28 @@ void insertData(const std::string& part, std::vector<unsigned char>& msg) {
   }
 }
 
-
-void establishConnection(const std::string& filename, const std::string& peer) {
+int establishConnection(const std::string& filename, const std::string& peer) {
   int client_socket = socket(AF_INET, SOCK_STREAM, 0);
   if (client_socket == -1) {
     std::cerr << "Error creating socket" << std::endl;
-    return;
+    return -1;
   }
   uint delim = peer.find(':');
   sockaddr_in server_address{};
   server_address.sin_family = AF_INET;
   server_address.sin_port = htons(std::stoi(peer.substr(delim + 1)));
-  if (inet_pton(AF_INET, peer.substr(0, delim).c_str(), &(server_address.sin_addr)) <= 0) {
+  if (inet_pton(AF_INET, peer.substr(0, delim).c_str(),
+                &(server_address.sin_addr)) <= 0) {
     std::cerr << "Error converting IP address" << std::endl;
     close(client_socket);
-    return;
+    return -1;
   }
-  if (connect(client_socket, reinterpret_cast<struct sockaddr*>(&server_address), sizeof(server_address)) == -1) {
+  if (connect(client_socket,
+              reinterpret_cast<struct sockaddr*>(&server_address),
+              sizeof(server_address)) == -1) {
     std::cerr << "Error connecting to the server" << std::endl;
     close(client_socket);
-    return;
+    return -1;
   }
   std::string info_hash = getInfoHash(filename);
   unsigned char length = 19;
@@ -392,7 +396,7 @@ void establishConnection(const std::string& filename, const std::string& peer) {
   std::vector<unsigned char> msg;
   msg.push_back(length);
   insertData(protocol, msg);
-  for (const auto& i: reserved) {
+  for (const auto& i : reserved) {
     msg.push_back(i);
   }
   insertData(info_hash, msg);
@@ -401,21 +405,105 @@ void establishConnection(const std::string& filename, const std::string& peer) {
     std::cerr << "Error sending data" << std::endl;
   }
   char buffer[msg.size()];
-    ssize_t bytesRead = recv(client_socket, buffer, sizeof(buffer), 0);
-    if (bytesRead == -1) {
-      std::cerr << "Error receiving data" << std::endl;
-    } else {
-      buffer[bytesRead] = '\0';
-    }
-    std::string recv_peer_id(buffer + 48, buffer + 68);
-    std::stringstream ss;
-    for (unsigned char c : recv_peer_id) {
-      ss << std::hex << std::setfill('0') << std::setw(2)
-         << static_cast<int>(c);
-    }
-    std::cout << "Peer ID: " << ss.str() << '\n';
-  close(client_socket);
+  ssize_t bytesRead = recv(client_socket, buffer, sizeof(buffer), 0);
+  if (bytesRead == -1) {
+    std::cerr << "Error receiving data" << std::endl;
+  } else {
+    buffer[bytesRead] = '\0';
+  }
+  std::string recv_peer_id(buffer + 48, buffer + 68);
+  std::stringstream ss;
+  for (unsigned char c : recv_peer_id) {
+    ss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(c);
+  }
+  std::cout << "Peer ID: " << ss.str() << '\n';
+  //  close(client_socket);
+  return client_socket;
 }
+
+
+class peerMessage {
+  unsigned int length = 0;
+  unsigned int id = 0;
+  std::vector<unsigned char> payload;
+
+ public:
+  peerMessage() = default;
+  peerMessage(unsigned int& Length, unsigned int& Id,
+              std::vector<unsigned char>& Payload)
+      : length(Length), id(Id), payload(Payload) {}
+
+  peerMessage(const std::vector<unsigned char>& buffer)
+      : payload(buffer.begin() + 5, buffer.end()) {
+    for (size_t i = 0; i < 4; ++i) {
+      length *= 256;
+      length += getNum(buffer[i]);
+    }
+    id = getNum(buffer[4]);
+  }
+  peerMessage(const peerMessage& other) : length(other.length), id(other.id) {
+    std::copy(other.payload.begin(), other.payload.end(), payload.begin());
+  }
+  peerMessage& operator=(const peerMessage& other) {
+    peerMessage tmp(other);
+    std::swap(id, tmp.id);
+    std::swap(length, tmp.length);
+    std::swap(payload, tmp.payload);
+    return *this;
+  }
+  std::vector<unsigned char> getVector() {
+    std::vector<unsigned char> ans(5 + payload.size());
+    unsigned int tmp = length;
+    int ind = 3;
+    while (tmp > 0) {
+      ans[ind] = tmp % 256;
+      tmp /= 256;
+      --ind;
+    }
+    ans[4] = id;
+    std::copy(payload.begin(), payload.end(), ans.begin() + 5);
+    return ans;
+  }
+  void addPayload(const std::vector<unsigned char>& Payload) {
+    std::copy(Payload.begin(), Payload.end(), payload.begin());
+  }
+  unsigned int getID() { return id; }
+};
+
+std::vector<unsigned char> read5Byte(const int& socket) {
+  std::vector<unsigned char> buffer(5);
+  ssize_t bytesRead = recv(socket, buffer.data(), sizeof(buffer), 0);
+  if (bytesRead == -1) {
+    std::cerr << "Error receiving data" << std::endl;
+  } else {
+    buffer[bytesRead] = '\0';
+  }
+  return buffer;
+}
+
+std::vector<unsigned char> readPayload(const int& socket, const size_t& size) {
+  std::vector<unsigned char> buffer(size);
+  ssize_t bytesRead = recv(socket, buffer.data(), sizeof(buffer), 0);
+  if (bytesRead == -1) {
+    std::cerr << "Error receiving data" << std::endl;
+  } else {
+    buffer[bytesRead] = '\0';
+  }
+  return buffer;
+}
+
+void process(const int& socket, const std::string& filename) {
+  std::vector<std::string> info = parseTorrentFile(filename);
+  long long length = std::stoll(info[2].substr(8));
+  long long piece_length = std::stoll(info[3].substr(14));
+  peerMessage msg;
+  while (msg.getID() != 5) {
+    msg = peerMessage(read5Byte(socket));
+  }
+  msg.addPayload(readPayload(socket, (length - 1) / piece_length + 1));
+  std::cout << "get bitfield message\n";
+}
+
 
 int main(int argc, char* argv[]) {
   if (argc < 2) {
@@ -461,8 +549,21 @@ int main(int argc, char* argv[]) {
     }
     std::string file = argv[2];
     std::string peer = argv[3];
-    establishConnection(file, peer);
-  }else {
+    int socket = establishConnection(file, peer);
+    close(socket);
+  } else if (command == "download_piece") {
+    std::string address = argv[3];
+    std::string file = argv[4];
+    int index = std::stoi(argv[5]);
+    std::cout << file << '\n';
+    std::cout << address << '\n';
+    std::cout << index << '\n';
+    std::vector<std::string> peers = sendRequest(file);
+    std::cout << "here\n";
+    std::string peer = peers[0];
+    int socket = establishConnection(file, peer);
+    process(socket, file);
+  } else {
     std::cerr << "unknown command: " << command << std::endl;
     return 1;
   }
@@ -477,6 +578,5 @@ int main(int argc, char* argv[]) {
 //   std::cout << ans.dump() << '\n';
 // }
 
-//sample.torrent
-// 178.62.82.89:51470
-
+// sample.torrent
+//  178.62.82.89:51470
