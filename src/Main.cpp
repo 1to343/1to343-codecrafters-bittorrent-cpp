@@ -57,7 +57,7 @@ json decodeBencodedNum(const std::string& encoded_value, uint& index) {
       encoded_value.substr(index + 1, last - index - 1);
   index = last + 1;
   const long long number = std::stoll(number_str);
-  return json{number};
+  return json(number);
 }
 
 json decodeBencodedList(const std::string& encoded_value, uint& index) {
@@ -239,9 +239,8 @@ json openTorrentFile(std::string filename) {
   }
   std::istreambuf_iterator<char> it{fs}, end;
   std::string buffer(it, end);
-  std::cout << "problem here\n";
   auto torrent = decodeBencodedValue(buffer);
-//  fs.close();
+  fs.close();
   return torrent;
 }
 
@@ -468,6 +467,7 @@ class peerMessage {
     std::copy(Payload.begin(), Payload.end(), payload.begin());
   }
   unsigned int getID() { return id; }
+  unsigned int getLength() { return length; }
 };
 
 std::vector<unsigned char> read5Byte(const int& socket) {
@@ -494,10 +494,13 @@ std::vector<unsigned char> readPayload(const int& socket, const size_t& size) {
 
 void process(const int& socket, const std::string& filename) {
   std::vector<std::string> info = parseTorrentFile(filename);
-  long long length = std::stoll(info[2].substr(8));
+//  std::cout << info[].substr(8) << "length\n";
+  long long length = std::stoll(info[1].substr(8));
   long long piece_length = std::stoll(info[3].substr(14));
   peerMessage msg;
   while (msg.getID() != 5) {
+    std::cout << msg.getLength() << "length\n";
+    std::cout << msg.getID() << "id\n";
     msg = peerMessage(read5Byte(socket));
   }
   msg.addPayload(readPayload(socket, (length - 1) / piece_length + 1));
@@ -559,7 +562,7 @@ int main(int argc, char* argv[]) {
     std::cout << address << '\n';
     std::cout << index << '\n';
     std::vector<std::string> peers = sendRequest(file);
-    std::cout << "here\n";
+//    std::cout << "here\n";
     std::string peer = peers[0];
     int socket = establishConnection(file, peer);
     process(socket, file);
