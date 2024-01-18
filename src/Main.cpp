@@ -45,7 +45,7 @@ json decodeBencodedString(const std::string& encoded_value, uint& index) {
     int64_t number = std::atoll(number_string.c_str());
     std::string str = encoded_value.substr(colon_index + 1, number);
     index = colon_index + str.size() + 1;
-    return json{str};
+    return json(str);
   } else {
     throw std::runtime_error("Invalid encoded value: " + encoded_value);
   }
