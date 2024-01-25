@@ -10,7 +10,9 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "lib/nlohmann/json.hpp"
@@ -23,6 +25,31 @@ unsigned int getNum(unsigned char c) {
   std::stringstream ss;
   ss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(c);
   ss >> ans;
+  return ans;
+}
+
+std::string decToHex(const unsigned int& num) {
+  unsigned int tmp = num;
+  std::stringstream ss;
+  std::string ans;
+  ss << std::hex << std::setfill('0') << std::setw(8) << num;
+  ss >> ans;
+  //  std::cout << ans << " ans\n";
+  return ans;
+}
+
+unsigned int hexToDec(const std::string& num) {
+  std::stringstream ss;
+  unsigned int ans = 0;
+  unsigned int t;
+  for (int i = 0; i < num.size(); i += 2) {
+    std::string tmp = num.substr(i, 2);
+    ss << std::dec << tmp;
+    ss >> t;
+    ans *= 256;
+    ans += t;
+    ss.clear();
+  }
   return ans;
 }
 
@@ -253,8 +280,6 @@ json openTorrentFile(std::string filename) {
   return torrent;
 }
 
-
-
 std::vector<std::string> getAns(const std::string& peers) {
   class ip {
    public:
@@ -365,11 +390,12 @@ void insertData(const std::string& part, std::vector<unsigned char>& msg) {
   }
 }
 
-int establishConnection(const std::string& filename, const std::string& peer) {
+std::pair<int, std::string> establishConnection(const std::string& filename,
+                                                const std::string& peer) {
   int client_socket = socket(AF_INET, SOCK_STREAM, 0);
   if (client_socket == -1) {
     std::cerr << "Error creating socket" << std::endl;
-    return -1;
+    return std::make_pair(-1, "error");
   }
   uint delim = peer.find(':');
   sockaddr_in server_address{};
@@ -379,14 +405,14 @@ int establishConnection(const std::string& filename, const std::string& peer) {
                 &(server_address.sin_addr)) <= 0) {
     std::cerr << "Error converting IP address" << std::endl;
     close(client_socket);
-    return -1;
+    return std::make_pair(-1, "error");
   }
   if (connect(client_socket,
               reinterpret_cast<struct sockaddr*>(&server_address),
               sizeof(server_address)) == -1) {
     std::cerr << "Error connecting to the server" << std::endl;
     close(client_socket);
-    return -1;
+    return std::make_pair(-1, "error");
   }
   std::string info_hash = getInfoHash(filename);
   unsigned char length = 19;
@@ -417,33 +443,25 @@ int establishConnection(const std::string& filename, const std::string& peer) {
   for (unsigned char c : recv_peer_id) {
     ss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(c);
   }
-  std::cout << "Peer ID: " << ss.str() << '\n';
+  std::string str_peer_id;
+  ss >> str_peer_id;
+
+  //  std::cout << "Peer ID: " << ss.str() << '\n';
   //  close(client_socket);
-  return client_socket;
+  return std::make_pair(client_socket, str_peer_id);
 }
 
 class peerMessage {
-  unsigned int length = 0;
-  unsigned int id = 0;
+  uint32_t length = 0;
+  uint8_t id = 0;
   std::vector<unsigned char> payload;
 
  public:
   peerMessage() = default;
-  peerMessage(unsigned int& Length, unsigned int& Id) : length(Length), id(Id) {}
-  peerMessage(unsigned int& Length, unsigned int& Id,
+  peerMessage(uint32_t& Length, uint8_t& Id) : length(Length), id(Id) {}
+  peerMessage(uint32_t& Length, uint8_t& Id,
               std::vector<unsigned char>& Payload)
       : length(Length), id(Id), payload(Payload) {}
-
-  peerMessage(const std::vector<unsigned char>& buffer) {
-    for (size_t i = 0; i < 4; ++i) {
-      length *= 256;
-      length += getNum(buffer[i]);
-    }
-    id = getNum(buffer[4]);
-    if (buffer.size() > 5) {
-      std::copy(buffer.begin() + 5, buffer.end(), payload.begin());
-    }
-  }
   peerMessage(const peerMessage& other) : length(other.length), id(other.id) {
     payload.resize(other.payload.size());
     std::copy(other.payload.begin(), other.payload.end(), payload.begin());
@@ -455,40 +473,75 @@ class peerMessage {
     std::swap(payload, tmp.payload);
     return *this;
   }
-  std::vector<unsigned char> getVector() {
-    std::vector<unsigned char> ans(5 + payload.size());
-    unsigned int tmp = length;
-    int ind = 3;
-    while (tmp > 0) {
-      ans[ind] = tmp % 256;
-      tmp /= 256;
-      --ind;
-    }
-    ans[4] = id;
-    std::copy(payload.begin(), payload.end(), ans.begin() + 5);
-    return ans;
-  }
   void addPayload(const std::vector<unsigned char>& Payload) {
     payload.resize(Payload.size());
     std::copy(Payload.begin(), Payload.end(), payload.begin());
   }
-  unsigned int getID() { return id; }
-  unsigned int getLength() { return length; }
-  std::vector<unsigned int> getLengthVector() {
-    std::vector<unsigned int> len_vector(4);
-    int tmp = length;
-    for (int i = 0; i < 4; ++i) {
-      len_vector[3 - i] = tmp % 256;
-      tmp /= 256;
-    }
-    return len_vector;
-  }
-  std::vector<unsigned int> getFullVector() {
-    std::vector<unsigned int> ans = getLengthVector();
-    ans.push_back(id);
-    std::copy(payload.begin(), payload.end(), ans.begin() + 5);
-    return ans;
-  }
+  uint8_t getID() { return id; }
+  uint32_t getLength() { return length; }
+
+  //  std::vector<unsigned char> getLengthVector() {
+  //    std::vector<unsigned char> len_vector;
+  //    std::string hexLen = decToHex(length);
+  //    for (const auto& i : hexLen) {
+  //      len_vector.push_back(static_cast<unsigned char>(i));
+  //    }
+  //    return len_vector;
+  //  }
+  //  std::vector<unsigned char> getFullVector() {
+  //    std::vector<unsigned char> ans = getLengthVector();
+  //    ans.push_back(id);
+  //    std::copy(payload.begin(), payload.end(), ans.begin() + 5);
+  //    return ans;
+  //  }
+};
+
+struct interest_unchoke_msg {
+  uint32_t length;
+  uint8_t id;
+//
+//  uint32_t getLength() { return length; }
+//  uint8_t getId() { return id; }
+} __attribute__((packed));
+
+struct bitfield_msg {
+  uint32_t length;
+  uint8_t id;
+  std::vector<unsigned char> payload;
+//  uint32_t getLength() { return length; }
+//
+//  uint8_t getId() { return id; }
+//  std::vector<unsigned char> getPayload() { return payload; }
+};
+
+struct request_msg {
+  uint32_t length;
+  uint8_t id;
+  uint32_t index;
+  uint32_t begin;
+  uint32_t block_length;
+//
+//  uint32_t getLength() { return length; }
+//  uint8_t getId() { return id; }
+//  uint32_t getIndex() { return index; }
+//  uint32_t getBegin() { return begin; }
+//  uint32_t getBlock_length() { return block_length; }
+} __attribute__((packed));
+
+struct piece_msg {
+  uint32_t length;
+  uint8_t id;
+  uint32_t index;
+  uint32_t begin;
+  std::vector<unsigned char> payload;
+
+//  std::vector<unsigned char> getPayload() { return payload; }
+//
+//  uint32_t getLength() { return length; }
+//  uint8_t getId() { return id; }
+//  uint32_t getIndex() { return index; }
+//  uint32_t getBegin() { return begin; }
+//  uint32_t getBlock_length() { return block_length; }
 };
 
 std::vector<unsigned char> read5Byte(const int& socket) {
@@ -499,13 +552,17 @@ std::vector<unsigned char> read5Byte(const int& socket) {
   } else {
     buffer[bytesRead] = '\0';
   }
-  std::cout << bytesRead << " red\n";
-  std::cout << buffer.size() << " buffer.size()\n";
+  std::cout << "buffer\n";
+  for (const auto& i : buffer) {
+    std::cout << static_cast<char>(i) << ' ';
+  }
+  std::cout << '\n';
+  //  std::cout << bytesRead << " red\n";
+  //  std::cout << buffer.size() << " buffer.size()\n";
   return buffer;
 }
 
 std::vector<unsigned char> readPayload(const int& socket, const size_t& size) {
-  std::cout << socket << " socket " << size << " size\n";
   std::vector<unsigned char> buffer(size);
   ssize_t bytesRead = recv(socket, buffer.data(), buffer.size(), 0);
   if (bytesRead == -1) {
@@ -513,43 +570,57 @@ std::vector<unsigned char> readPayload(const int& socket, const size_t& size) {
   } else {
     buffer[bytesRead] = '\0';
   }
-//  std::cout << buffer.size() << " buffer.size()\n";
-//  std::cout << bytesRead << " red\n";
   return buffer;
 }
 
-void sendMsg(const int& socket, peerMessage& msg) {
-  std::vector<unsigned int> data = msg.getFullVector();
-  if (send(socket, data.data(), data.size(), 0) == -1) {
-    std::cerr << "Error sending data" << std::endl;
+std::pair<int, std::vector<unsigned char>> recvMsg(const int& socket) {
+  uint32_t* len_adr = new uint32_t;
+  ssize_t len_red = recv(socket, len_adr, 4, 0);
+  uint32_t length = htonl(len_red);
+  std::cout << length << " length\n";
+  delete (len_adr);
+  if (len_red == 0) {
+    throw std::runtime_error("Received unexpected EOF");
   }
-//  std::cout << "send interest message\n";
+  uint8_t id;
+  ssize_t id_red = recv(socket, &id, 1, 0);
+  std::cout << " id\n";
+  std::vector<unsigned char> payload(length - 1);
+  size_t done = 0;
+  while (done < payload.size()) {
+    ssize_t payload_red =
+        recv(socket, payload.data() + done, payload.size() - done, 0);
+    if (payload_red < 0) {
+      throw std::runtime_error("Error receiving payload");
+    }
+    done += payload_red;
+  }
+  if (id > 8) {
+    throw std::runtime_error("Invalid message id");
+  }
+  return {id, payload};
+}
+
+size_t sendMsg(const int& socket, void* msg_pointer, size_t size) {
+  std::vector<unsigned char> msg;
+  std::span<unsigned char> span(reinterpret_cast<unsigned char*>(msg_pointer),
+                                size);
+  std::copy(span.begin(), span.end(),
+            std::back_insert_iterator<std::vector<unsigned char>>(msg));
+  ssize_t sent = send(socket, msg.data(), msg.size(), 0);
+  if (sent < 0 || sent < msg.size()) {
+    throw std::runtime_error("Error sending message");
+  }
+  return sent;
 }
 
 void process(const int& socket, const std::string& filename) {
-  std::vector<unsigned int> data;
-  std::vector<std::string> info = parseTorrentFile(filename);
-  long long length = std::stoll(info[1].substr(8));
-  long long piece_length = std::stoll(info[3].substr(14));
-  peerMessage bitfieldMsg;
-  while (bitfieldMsg.getID() != 5) {
-    bitfieldMsg = peerMessage(read5Byte(socket));
-  }
-  bitfieldMsg.addPayload(readPayload(socket, ((length - 1) / piece_length) / 8 + 1));
-//  std::cout << "got bitfield\n";
-  // got bitfield message
-  peerMessage interestMsg;
-  unsigned int interestLen = 5;
-  unsigned int interestId = 2;
-  interestMsg = peerMessage(interestLen, interestId);
-  sendMsg(socket, interestMsg);
-//  std::cout << "send interest\n";
-  // send interest message
-  peerMessage chokeMsg;
-  while (chokeMsg.getID() != 1) {
-    chokeMsg = peerMessage(read5Byte(socket));
-    std::cout << chokeMsg.getID() << " id\n";
-  }
+  auto [id, payload] = recvMsg(socket);
+  std::cout << id << " First id\n";
+  interest_unchoke_msg interest_msg{1, 2};
+  sendMsg(socket, (void*)&interest_msg, sizeof(interest_msg));
+  std::tie(id, payload) = recvMsg(socket);
+  std::cout << id << " Second id\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -596,19 +667,18 @@ int main(int argc, char* argv[]) {
     }
     std::string file = argv[2];
     std::string peer = argv[3];
-    int socket = establishConnection(file, peer);
+    auto res = establishConnection(file, peer);
+    int socket = res.first;
+    std::cout << "Peer ID: " << res.second << '\n';
     close(socket);
   } else if (command == "download_piece") {
     std::string address = argv[3];
     std::string file = argv[4];
     int index = std::stoi(argv[5]);
-    std::cout << file << '\n';
-    std::cout << address << '\n';
-    std::cout << index << '\n';
     std::vector<std::string> peers = sendRequest(file);
-    //    std::cout << "here\n";
     std::string peer = peers[0];
-    int socket = establishConnection(file, peer);
+    auto res = establishConnection(file, peer);
+    int socket = res.first;
     process(socket, file);
   } else {
     std::cerr << "unknown command: " << command << std::endl;
