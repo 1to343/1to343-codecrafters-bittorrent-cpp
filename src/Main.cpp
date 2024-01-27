@@ -450,7 +450,6 @@ std::pair<int, std::string> establishConnection(const std::string& filename,
   return std::make_pair(client_socket, str_peer_id);
 }
 
-
 struct interest_unchoke_msg {
   uint32_t length;
   uint8_t id;
@@ -477,7 +476,6 @@ struct piece_msg {
   uint32_t begin;
   std::vector<unsigned char> payload;
 };
-
 
 std::vector<unsigned char> readPayload(const int& socket, const size_t& size) {
   std::vector<unsigned char> buffer(size);
@@ -539,8 +537,8 @@ struct block {
 std::pair<uint32_t, std::string> saveBlock(std::vector<unsigned char> payload,
                                            block Block,
                                            const std::string& address) {
-  std::string output_name = address + '_' +
-                            std::to_string(Block.index_id) + ".block";
+  std::string output_name =
+      address + '_' + std::to_string(Block.index_id) + ".block";
   std::ofstream outfile(output_name, std::ios::out | std::ios::binary);
 
   uint32_t block_index;
@@ -676,17 +674,11 @@ bool process(const int& socket, const std::string& filename,
   size_t file_length = std::stoul(res[1].substr(8));
   size_t piece_length = std::stoul(res[3].substr(14));
   size_t piece_num = (file_length - 1) / piece_length + 1;
-//  uint32_t piece = 0;
   piece_num = 1;
-//  for (; piece < piece_num; ++piece) {
-    bool ans = downloadPiece(socket, filename, address, piece);
-//  }
+  bool ans = downloadPiece(socket, filename, address, piece);
 
-//  close(socket);
   return ans;
 }
-
-//void gatherPieces(const std::string& address, )
 
 bool downloadFile(const std::string& file, const std::string& address) {
   auto info = parseTorrentFile(file);
@@ -737,7 +729,6 @@ bool downloadFile(const std::string& file, const std::string& address) {
   outfile.close();
   return ans;
 }
-
 
 int main(int argc, char* argv[]) {
   if (argc < 2) {
