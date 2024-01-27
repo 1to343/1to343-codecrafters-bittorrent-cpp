@@ -82,6 +82,11 @@
 				"backtrace" : 2,
 				"fragment" : "/usr/lib/x86_64-linux-gnu/libcurl.so",
 				"role" : "libraries"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "-lpthread",
+				"role" : "libraries"
 			}
 		],
 		"language" : "CXX"

@@ -5,4 +5,5 @@ find_package(OpenSSL REQUIRED)
 find_package(CURL REQUIRED)
 set(SOURCE_FILES src/Main.cpp src/lib/nlohmann/json.hpp)
 add_executable(bittorrent ${SOURCE_FILES})
-target_link_libraries(bittorrent PRIVATE OpenSSL::Crypto CURL::libcurl)
+target_link_libraries(bittorrent PRIVATE OpenSSL::Crypto CURL::libcurl pthread)
+

@@ -65,7 +65,7 @@ build CMakeFiles/bittorrent.dir/src/Main.cpp.o: CXX_COMPILER__bittorrent_unscann
 
 build bittorrent: CXX_EXECUTABLE_LINKER__bittorrent_Debug CMakeFiles/bittorrent.dir/src/Main.cpp.o | /usr/lib/x86_64-linux-gnu/libcrypto.so /usr/lib/x86_64-linux-gnu/libcurl.so
   FLAGS = -g
-  LINK_LIBRARIES = /usr/lib/x86_64-linux-gnu/libcrypto.so  /usr/lib/x86_64-linux-gnu/libcurl.so
+  LINK_LIBRARIES = /usr/lib/x86_64-linux-gnu/libcrypto.so  /usr/lib/x86_64-linux-gnu/libcurl.so  -lpthread
   OBJECT_DIR = CMakeFiles/bittorrent.dir
   POST_BUILD = :
   PRE_LINK = :
