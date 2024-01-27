@@ -447,62 +447,13 @@ std::pair<int, std::string> establishConnection(const std::string& filename,
   std::string str_peer_id;
   ss >> str_peer_id;
 
-  //  std::cout << "Peer ID: " << ss.str() << '\n';
-  //  close(client_socket);
   return std::make_pair(client_socket, str_peer_id);
 }
 
-class peerMessage {
-  uint32_t length = 0;
-  uint8_t id = 0;
-  std::vector<unsigned char> payload;
-
- public:
-  peerMessage() = default;
-  peerMessage(uint32_t& Length, uint8_t& Id) : length(Length), id(Id) {}
-  peerMessage(uint32_t& Length, uint8_t& Id,
-              std::vector<unsigned char>& Payload)
-      : length(Length), id(Id), payload(Payload) {}
-  peerMessage(const peerMessage& other) : length(other.length), id(other.id) {
-    payload.resize(other.payload.size());
-    std::copy(other.payload.begin(), other.payload.end(), payload.begin());
-  }
-  peerMessage& operator=(const peerMessage& other) {
-    peerMessage tmp(other);
-    std::swap(id, tmp.id);
-    std::swap(length, tmp.length);
-    std::swap(payload, tmp.payload);
-    return *this;
-  }
-  void addPayload(const std::vector<unsigned char>& Payload) {
-    payload.resize(Payload.size());
-    std::copy(Payload.begin(), Payload.end(), payload.begin());
-  }
-  uint8_t getID() { return id; }
-  uint32_t getLength() { return length; }
-
-  //  std::vector<unsigned char> getLengthVector() {
-  //    std::vector<unsigned char> len_vector;
-  //    std::string hexLen = decToHex(length);
-  //    for (const auto& i : hexLen) {
-  //      len_vector.push_back(static_cast<unsigned char>(i));
-  //    }
-  //    return len_vector;
-  //  }
-  //  std::vector<unsigned char> getFullVector() {
-  //    std::vector<unsigned char> ans = getLengthVector();
-  //    ans.push_back(id);
-  //    std::copy(payload.begin(), payload.end(), ans.begin() + 5);
-  //    return ans;
-  //  }
-};
 
 struct interest_unchoke_msg {
   uint32_t length;
   uint8_t id;
-  //
-  //  uint32_t getLength() { return length; }
-  //  uint8_t getId() { return id; }
 } __attribute__((packed));
 
 struct bitfield_msg {
@@ -527,23 +478,6 @@ struct piece_msg {
   std::vector<unsigned char> payload;
 };
 
-std::vector<unsigned char> read5Byte(const int& socket) {
-  std::vector<unsigned char> buffer(5);
-  ssize_t bytesRead = recv(socket, buffer.data(), buffer.size(), 0);
-  if (bytesRead == -1) {
-    std::cerr << "Error receiving data" << std::endl;
-  } else {
-    buffer[bytesRead] = '\0';
-  }
-  std::cout << "buffer\n";
-  for (const auto& i : buffer) {
-    std::cout << static_cast<char>(i) << ' ';
-  }
-  std::cout << '\n';
-  //  std::cout << bytesRead << " red\n";
-  //  std::cout << buffer.size() << " buffer.size()\n";
-  return buffer;
-}
 
 std::vector<unsigned char> readPayload(const int& socket, const size_t& size) {
   std::vector<unsigned char> buffer(size);
@@ -605,7 +539,7 @@ struct block {
 std::pair<uint32_t, std::string> saveBlock(std::vector<unsigned char> payload,
                                            block Block,
                                            const std::string& address) {
-  std::string output_name = address + '_' + std::to_string(Block.index) + '_' +
+  std::string output_name = address + '_' +
                             std::to_string(Block.index_id) + ".block";
   std::ofstream outfile(output_name, std::ios::out | std::ios::binary);
 
@@ -696,7 +630,6 @@ bool downloadPiece(const int& socket, const std::string& filename,
   while (!waiting.empty() || !curr.empty()) {
     while (curr.size() < 5 && !waiting.empty()) {
       auto top = waiting.front();
-      //      ind = top.piece;
       waiting.pop();
       curr.push(top);
     }
@@ -709,7 +642,6 @@ bool downloadPiece(const int& socket, const std::string& filename,
     done.emplace_back(name, offset);
     curr.pop();
   }
-  //    close(socket);
   std::sort(done.begin(), done.end(), [](auto p1, auto p2) {
     auto [n1, o1] = p1;
     auto [n2, o2] = p2;
@@ -727,8 +659,6 @@ bool downloadPiece(const int& socket, const std::string& filename,
   }
   outfile.close();
   auto file_hash = calculateSHA1Hash(address);
-//  std::cout << piece_hash << " piece_hash\n";
-//  std::cout << file_hash << " file_hash\n";
   if (piece_hash != file_hash) {
     return false;
   }
@@ -752,9 +682,62 @@ bool process(const int& socket, const std::string& filename,
     bool ans = downloadPiece(socket, filename, address, piece);
 //  }
 
-  close(socket);
+//  close(socket);
   return ans;
 }
+
+//void gatherPieces(const std::string& address, )
+
+bool downloadFile(const std::string& file, const std::string& address) {
+  auto info = parseTorrentFile(file);
+  size_t file_length = std::stoul(info[1].substr(8));
+  size_t piece_length = std::stoul(info[3].substr(14));
+  size_t piece_num = (file_length - 1) / piece_length + 1;
+  std::vector<std::string> peers = sendRequest(file);
+  std::unordered_map<int, std::string> reses;
+  std::queue<int> free_peers;
+  std::queue<int> pieces;
+  for (const auto peer : peers) {
+    auto res = establishConnection(file, peer);
+    reses[res.first] = res.second;
+    free_peers.push(res.first);
+  }
+  for (int i = 0; i < piece_num; ++i) {
+    pieces.push(i);
+  }
+  bool ans = true;
+  while (!pieces.empty()) {
+    int piece = pieces.front();
+    int socket = free_peers.front();
+    free_peers.pop();
+    std::string piece_address = address + "_piece_" + std::to_string(piece);
+    bool done = process(socket, file, piece_address, piece);
+    if (done) {
+      pieces.pop();
+    }
+    ans |= done;
+    free_peers.push(socket);
+  }
+  while (!free_peers.empty()) {
+    int socket = free_peers.front();
+    free_peers.pop();
+    close(socket);
+  }
+  std::ofstream outfile(address, std::ios::out | std::ios::binary);
+  for (int i = 0; i < piece_num; ++i) {
+    std::string name = address + "_piece_" + std::to_string(i);
+    std::ifstream in(name, std::ios::out | std::ios::binary);
+    std::filesystem::path path(name);
+    auto file_size = std::filesystem::file_size(path);
+    std::vector<unsigned char> buf(file_size);
+    in.read(reinterpret_cast<char*>(buf.data()), file_size);
+    in.close();
+    outfile.write(reinterpret_cast<char*>(buf.data()), file_size);
+  }
+  outfile.close();
+  return ans;
+}
+
 
 int main(int argc, char* argv[]) {
   if (argc < 2) {
@@ -815,6 +798,14 @@ int main(int argc, char* argv[]) {
     auto ans = process(socket, file, address, piece);
     if (ans) {
       std::cout << "Piece " << piece << " downloaded to " << address << '\n';
+    }
+    close(socket);
+  } else if (command == "download") {
+    std::string address = argv[3];
+    std::string file = argv[4];
+    bool ans = downloadFile(file, address);
+    if (ans) {
+      std::cout << "Downloaded test.torrent to " << address << '\n';
     }
   } else {
     std::cerr << "unknown command: " << command << std::endl;
