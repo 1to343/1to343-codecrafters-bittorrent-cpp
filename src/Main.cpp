@@ -660,6 +660,7 @@ bool downloadPiece(const int& socket, const std::string& filename,
   if (piece_hash != file_hash) {
     return false;
   }
+  std::cout << piece << " downloaded correctly\n";
   return true;
 }
 
