@@ -1,6 +1,7 @@
 #include <arpa/inet.h>
 #include <curl/curl.h>
 #include <netinet/in.h>
+#include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -10,13 +11,13 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <queue>
 #include <span>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "lib/nlohmann/json.hpp"
-#include "peerMessage.cpp"
 
 using json = nlohmann::json;
 
@@ -499,19 +500,15 @@ class peerMessage {
 struct interest_unchoke_msg {
   uint32_t length;
   uint8_t id;
-//
-//  uint32_t getLength() { return length; }
-//  uint8_t getId() { return id; }
+  //
+  //  uint32_t getLength() { return length; }
+  //  uint8_t getId() { return id; }
 } __attribute__((packed));
 
 struct bitfield_msg {
   uint32_t length;
   uint8_t id;
   std::vector<unsigned char> payload;
-//  uint32_t getLength() { return length; }
-//
-//  uint8_t getId() { return id; }
-//  std::vector<unsigned char> getPayload() { return payload; }
 };
 
 struct request_msg {
@@ -520,12 +517,6 @@ struct request_msg {
   uint32_t index;
   uint32_t begin;
   uint32_t block_length;
-//
-//  uint32_t getLength() { return length; }
-//  uint8_t getId() { return id; }
-//  uint32_t getIndex() { return index; }
-//  uint32_t getBegin() { return begin; }
-//  uint32_t getBlock_length() { return block_length; }
 } __attribute__((packed));
 
 struct piece_msg {
@@ -534,14 +525,6 @@ struct piece_msg {
   uint32_t index;
   uint32_t begin;
   std::vector<unsigned char> payload;
-
-//  std::vector<unsigned char> getPayload() { return payload; }
-//
-//  uint32_t getLength() { return length; }
-//  uint8_t getId() { return id; }
-//  uint32_t getIndex() { return index; }
-//  uint32_t getBegin() { return begin; }
-//  uint32_t getBlock_length() { return block_length; }
 };
 
 std::vector<unsigned char> read5Byte(const int& socket) {
@@ -576,15 +559,13 @@ std::vector<unsigned char> readPayload(const int& socket, const size_t& size) {
 std::pair<int, std::vector<unsigned char>> recvMsg(const int& socket) {
   uint32_t* len_adr = new uint32_t;
   ssize_t len_red = recv(socket, len_adr, 4, 0);
-  uint32_t length = htonl(len_red);
-  std::cout << length << " length\n";
+  uint32_t length = ntohl(*len_adr);
   delete (len_adr);
   if (len_red == 0) {
     throw std::runtime_error("Received unexpected EOF");
   }
   uint8_t id;
   ssize_t id_red = recv(socket, &id, 1, 0);
-  std::cout << " id\n";
   std::vector<unsigned char> payload(length - 1);
   size_t done = 0;
   while (done < payload.size()) {
@@ -614,13 +595,165 @@ size_t sendMsg(const int& socket, void* msg_pointer, size_t size) {
   return sent;
 }
 
-void process(const int& socket, const std::string& filename) {
+struct block {
+  uint32_t index_id;
+  uint32_t index;
+  uint32_t begin;
+  uint32_t length;
+};
+
+std::pair<uint32_t, std::string> saveBlock(std::vector<unsigned char> payload,
+                                           block Block,
+                                           const std::string& address) {
+  std::string output_name = address + '_' + std::to_string(Block.index) + '_' +
+                            std::to_string(Block.index_id) + ".block";
+  std::ofstream outfile(output_name, std::ios::out | std::ios::binary);
+
+  uint32_t block_index;
+  std::span<unsigned char> span(payload.data(), 4);
+  std::copy(span.begin(), span.end(),
+            reinterpret_cast<unsigned char*>(&block_index));
+  block_index = ntohl(block_index);
+  if (Block.index != block_index) {
+    std::cout << "Different indexes\n";
+  }
+
+  uint32_t block_offset;
+  span = std::span<unsigned char>(payload.data() + 4, 4);
+  std::copy(span.begin(), span.end(),
+            reinterpret_cast<unsigned char*>(&block_offset));
+  block_offset = ntohl(block_offset);
+  if (Block.begin != block_offset) {
+    std::cout << "Different offset\n";
+  }
+
+  std::vector<unsigned char> buf;
+  size_t blockSize = payload.size() - 8;
+  span = std::span<unsigned char>(payload.data() + 8, blockSize);
+  std::copy(span.begin(), span.end(),
+            std::back_insert_iterator<std::vector<unsigned char>>(buf));
+  outfile.write(reinterpret_cast<char*>(buf.data()), blockSize);
+  outfile.close();
+  return {block_offset, output_name};
+}
+
+std::pair<int, std::vector<unsigned char>> downloadBlock(const int& socket,
+                                                         const block& block) {
+  request_msg req_msg{13, 6, htonl(block.index), htonl(block.begin),
+                      htonl(block.length)};
+  sendMsg(socket, (void*)&req_msg, sizeof(req_msg));
+  return recvMsg(socket);
+}
+
+std::string calculateSHA1Hash(const std::string& filename) {
+  EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+  EVP_DigestInit_ex(ctx, EVP_sha1(), NULL);
+  FILE* file = fopen(filename.c_str(), "rb");
+  char buffer[1024];
+  while (true) {
+    size_t bytes_read = fread(buffer, 1, 1024, file);
+    if (bytes_read == 0) {
+      break;
+    }
+    EVP_DigestUpdate(ctx, buffer, bytes_read);
+  }
+  fclose(file);
+  unsigned char hash[EVP_MAX_MD_SIZE];
+  unsigned int hash_len = 0;
+  EVP_DigestFinal_ex(ctx, hash, &hash_len);
+  std::stringstream ss;
+  for (int i = 0; i < 20; ++i) {
+    ss << std::hex << std::setfill('0') << std::setw(2) << (uint32_t)hash[i];
+  }
+  EVP_MD_CTX_free(ctx);
+  return ss.str();
+}
+
+bool downloadPiece(const int& socket, const std::string& filename,
+                   const std::string& address, const uint32_t& piece) {
+  auto res = parseTorrentFile(filename);
+  size_t file_length = std::stoul(res[1].substr(8));
+  size_t piece_length = std::stoul(res[3].substr(14));
+  auto piece_hash = res[5 + piece];
+  uint32_t block_size = 16384;
+  std::queue<block> waiting;
+  uint32_t tmp = piece_length;
+  if (file_length / (piece + 1) < piece_length) {
+    tmp = file_length - piece * piece_length;
+  }
+  uint32_t ind = 0;
+  while (tmp > 0) {
+    waiting.push(
+        block{ind, piece, ind * block_size, std::min(tmp, block_size)});
+    ++ind;
+    if (tmp < block_size) {
+      break;
+    }
+    tmp -= block_size;
+  }
+  std::queue<block> curr;
+  std::vector<std::pair<std::string, uint32_t>> done;
+  while (!waiting.empty() || !curr.empty()) {
+    while (curr.size() < 5 && !waiting.empty()) {
+      auto top = waiting.front();
+      //      ind = top.piece;
+      waiting.pop();
+      curr.push(top);
+    }
+    block curr_block = curr.front();
+    request_msg req_msg{13, 6, htonl(curr_block.index), htonl(curr_block.begin),
+                        htonl(curr_block.length)};
+    sendMsg(socket, (void*)&req_msg, sizeof(request_msg));
+    auto [id, payload] = recvMsg(socket);
+    auto [offset, name] = saveBlock(payload, curr_block, address);
+    done.emplace_back(name, offset);
+    curr.pop();
+  }
+  //    close(socket);
+  std::sort(done.begin(), done.end(), [](auto p1, auto p2) {
+    auto [n1, o1] = p1;
+    auto [n2, o2] = p2;
+    return o1 < o2;
+  });
+  std::ofstream outfile(address, std::ios::out | std::ios::binary);
+  for (auto [name, offset] : done) {
+    std::ifstream in(name, std::ios::out | std::ios::binary);
+    std::filesystem::path path(name);
+    auto file_size = std::filesystem::file_size(path);
+    std::vector<unsigned char> buf(file_size);
+    in.read(reinterpret_cast<char*>(buf.data()), file_size);
+    in.close();
+    outfile.write(reinterpret_cast<char*>(buf.data()), file_size);
+  }
+  outfile.close();
+  auto file_hash = calculateSHA1Hash(address);
+//  std::cout << piece_hash << " piece_hash\n";
+//  std::cout << file_hash << " file_hash\n";
+  if (piece_hash != file_hash) {
+    return false;
+  }
+  return true;
+}
+
+bool process(const int& socket, const std::string& filename,
+             const std::string& address, const int& piece) {
   auto [id, payload] = recvMsg(socket);
-  std::cout << id << " First id\n";
   interest_unchoke_msg interest_msg{1, 2};
   sendMsg(socket, (void*)&interest_msg, sizeof(interest_msg));
   std::tie(id, payload) = recvMsg(socket);
-  std::cout << id << " Second id\n";
+
+  auto res = parseTorrentFile(filename);
+  size_t file_length = std::stoul(res[1].substr(8));
+  size_t piece_length = std::stoul(res[3].substr(14));
+  size_t piece_num = (file_length - 1) / piece_length + 1;
+//  uint32_t piece = 0;
+  piece_num = 1;
+//  for (; piece < piece_num; ++piece) {
+    bool ans = downloadPiece(socket, filename, address, piece);
+//  }
+
+  close(socket);
+  return ans;
 }
 
 int main(int argc, char* argv[]) {
@@ -674,12 +807,15 @@ int main(int argc, char* argv[]) {
   } else if (command == "download_piece") {
     std::string address = argv[3];
     std::string file = argv[4];
-    int index = std::stoi(argv[5]);
+    int piece = std::stoi(argv[5]);
     std::vector<std::string> peers = sendRequest(file);
     std::string peer = peers[0];
     auto res = establishConnection(file, peer);
     int socket = res.first;
-    process(socket, file);
+    auto ans = process(socket, file, address, piece);
+    if (ans) {
+      std::cout << "Piece " << piece << " downloaded to " << address << '\n';
+    }
   } else {
     std::cerr << "unknown command: " << command << std::endl;
     return 1;
