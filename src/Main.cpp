@@ -9,11 +9,13 @@
 #include <cctype>
 #include <cstdlib>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <map>
 #include <queue>
 #include <span>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -30,12 +32,10 @@ unsigned int getNum(unsigned char c) {
 }
 
 std::string decToHex(const unsigned int& num) {
-  unsigned int tmp = num;
   std::stringstream ss;
   std::string ans;
   ss << std::hex << std::setfill('0') << std::setw(8) << num;
   ss >> ans;
-  //  std::cout << ans << " ans\n";
   return ans;
 }
 
@@ -681,6 +681,21 @@ bool process(const int& socket, const std::string& filename,
   return ans;
 }
 
+void gatherPieces(const std::string& address, const size_t& piece_num) {
+  std::ofstream outfile(address, std::ios::out | std::ios::binary);
+  for (int i = 0; i < piece_num; ++i) {
+    std::string name = address + "_piece_" + std::to_string(i);
+    std::ifstream in(name, std::ios::out | std::ios::binary);
+    std::filesystem::path path(name);
+    auto file_size = std::filesystem::file_size(path);
+    std::vector<unsigned char> buf(file_size);
+    in.read(reinterpret_cast<char*>(buf.data()), file_size);
+    in.close();
+    outfile.write(reinterpret_cast<char*>(buf.data()), file_size);
+  }
+  outfile.close();
+}
+
 bool downloadFile(const std::string& file, const std::string& address) {
   auto info = parseTorrentFile(file);
   size_t file_length = std::stoul(info[1].substr(8));
@@ -699,35 +714,33 @@ bool downloadFile(const std::string& file, const std::string& address) {
     pieces.push(i);
   }
   bool ans = true;
+  std::vector<int> pieces_taken;
   while (!pieces.empty()) {
-    int piece = pieces.front();
-    int socket = free_peers.front();
-    free_peers.pop();
-    std::string piece_address = address + "_piece_" + std::to_string(piece);
-    bool done = process(socket, file, piece_address, piece);
-    if (done) {
+    std::vector<std::future<bool>> futures;
+    size_t len = std::min(pieces.size(), peers.size());
+    pieces_taken = std::vector<int>(len);
+    for (int i = 0; i < len; ++i) {
+      int piece = pieces.front();
+      pieces_taken[i] = piece;
       pieces.pop();
+      int socket = free_peers.front();
+      free_peers.pop();
+      std::string piece_address = address + "_piece_" + std::to_string(piece);
+      futures.emplace_back(std::async(std::launch::async, process, socket, file, piece_address, piece));
+      free_peers.push(socket);
     }
-    ans |= done;
-    free_peers.push(socket);
+    for (int i = 0; i < len; ++i) {
+      if (!futures[i].get()) {
+        pieces.push(pieces_taken[i]);
+      }
+    }
   }
   while (!free_peers.empty()) {
     int socket = free_peers.front();
     free_peers.pop();
     close(socket);
   }
-  std::ofstream outfile(address, std::ios::out | std::ios::binary);
-  for (int i = 0; i < piece_num; ++i) {
-    std::string name = address + "_piece_" + std::to_string(i);
-    std::ifstream in(name, std::ios::out | std::ios::binary);
-    std::filesystem::path path(name);
-    auto file_size = std::filesystem::file_size(path);
-    std::vector<unsigned char> buf(file_size);
-    in.read(reinterpret_cast<char*>(buf.data()), file_size);
-    in.close();
-    outfile.write(reinterpret_cast<char*>(buf.data()), file_size);
-  }
-  outfile.close();
+  gatherPieces(address, piece_num);
   return ans;
 }
 
