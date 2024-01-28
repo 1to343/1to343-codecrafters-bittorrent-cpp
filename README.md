@@ -1,35 +1,29 @@
+# Build Your Own BitTorrent
+
 [![progress-banner](https://backend.codecrafters.io/progress/bittorrent/7db922cc-41f3-4282-9d55-9d6433f29439)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
 
-This is a starting point for C++ solutions to the
-["Build Your Own BitTorrent" Challenge](https://app.codecrafters.io/courses/bittorrent/overview).
+Welcome to the "Build Your Own BitTorrent" challenge! This repository serves as a starting point for C++ solutions to the challenge.
 
-In this challenge, you’ll build a BitTorrent client that's capable of parsing a
-.torrent file and downloading a file from a peer. Along the way, we’ll learn
-about how torrent files are structured, HTTP trackers, BitTorrent’s Peer
-Protocol, pipelining and more.
+## Overview
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
+This codebase provides functionalities for decoding bencoded values (strings, integers, lists, and dictionaries), parsing .torrent files, and downloading either a single piece or the entire file using the BitTorrent protocol.
 
-# Passing the first stage
+## Getting Started
 
-The entry point for your BitTorrent implementation is in `src/Main.cpp`. Study
-and uncomment the relevant code, and push your changes to pass the first stage:
+To begin, ensure that you have `cmake` installed locally on your system. Then, execute the `./your_bittorrent.sh` script to run your program, which is implemented in `src/Main.cpp`.
 
-```sh
-git add .
-git commit -m "pass 1st stage" # any msg
-git push origin master
-```
+## Usage
 
-Time to move on to the next stage!
+The provided `your_bittorrent.sh` script supports various functionalities:
 
-# Stage 2 & beyond
+1. **Decoding Bencoded Values**: Use `./your_bittorrent.sh decode bencoded_value` to decode bencoded values.
 
-Note: This section is for stages 2 and beyond.
+2. **Parsing Torrent Files**: Run `./your_bittorrent.sh info sample.torrent` to parse a .torrent file.
 
-1. Ensure you have `cmake` installed locally
-1. Run `./your_bittorrent.sh` to run your program, which is implemented in
-   `src/Main.cpp`.
-1. Commit your changes and run `git push origin master` to submit your solution
-   to CodeCrafters. Test output will be streamed to your terminal.
+3. **Discovering Peers**: Send a GET request to an HTTP tracker to discover peers for file download with `./your_bittorrent.sh peers sample.torrent`.
+
+4. **Establishing TCP Connections**: Initiate a TCP connection with a peer and complete a handshake using `./your_bittorrent.sh handshake sample.torrent <peer_ip>:<peer_port>`.
+
+5. **Downloading Single Piece of File**: Utilize `./your_bittorrent.sh download_piece -o where_to_download sample.torrent number_of_piece` to download a single piece of the file.
+
+6. **Downloading Entire File**: Download the entire file using `./your_bittorrent.sh download -o where_to_download sample.torrent`.
