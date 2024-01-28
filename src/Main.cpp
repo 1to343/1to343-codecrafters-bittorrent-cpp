@@ -683,6 +683,13 @@ void getAvailablePieces(std::vector<std::vector<int>>& available_peers, const in
   std::tie(id, payload) = recvMsg(socket);
 }
 
+void getAvailablePiecesSingular(const int& socket) {
+  auto [id, payload] = recvMsg(socket);
+  interest_unchoke_msg interest_msg{1, 2};
+  sendMsg(socket, (void*)&interest_msg, sizeof(interest_msg));
+  std::tie(id, payload) = recvMsg(socket);
+}
+
 int getFreePeers(const std::vector<int>& peersPithCurrPiece, const std::unordered_set<int>& free_peers) {
   for (const auto peer : peersPithCurrPiece) {
     if (free_peers.contains(peer)) {
@@ -843,6 +850,7 @@ int main(int argc, char* argv[]) {
     std::string peer = peers[0];
     auto res = establishConnection(file, peer);
     int socket = res.first;
+    getAvailablePiecesSingular(socket);
     auto ans = process(socket, file, address, piece);
     if (ans) {
       std::cout << "Piece " << piece << " downloaded to " << address << '\n';
