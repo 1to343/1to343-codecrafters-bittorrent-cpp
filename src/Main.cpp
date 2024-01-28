@@ -757,16 +757,16 @@ bool downloadFile(const std::string& file, const std::string& address) {
       free_peers.erase(socket);
       std::string piece_address = address + "_piece_" + std::to_string(piece);
       futures.emplace_back(piece, std::async(std::launch::async, process, socket, file, piece_address, piece));
-//      if (process(socket, file, piece_address, piece)) {
-//        pieces.erase(pieces.begin() + i);
-//      }
+      if (process(socket, file, piece_address, piece)) {
+        pieces.erase(pieces.begin() + i);
+      }
       free_peers.insert(socket);
     }
-    for (int i = 0; i < futures.size(); ++i) {
-      if (futures[i].second.get()) {
-        pieces.erase(pieces.begin() + futures[i].first);
-      }
-    }
+//    for (int i = 0; i < futures.size(); ++i) {
+//      if (futures[i].second.get()) {
+//        pieces.erase(pieces.begin() + futures[i].first);
+//      }
+//    }
   }
 //  bool ans = true;
 //  std::vector<int> pieces_taken;
