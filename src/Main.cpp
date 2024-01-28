@@ -15,7 +15,6 @@
 #include <queue>
 #include <span>
 #include <string>
-#include <thread>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -158,7 +157,6 @@ json decodeBencodedDict(const std::string& encoded_value, uint& index) {
 json decodeBencodedValue(const std::string& encoded_value) {
   uint index = 1;
   if (std::isdigit(encoded_value[0])) {
-    // Example: "5:hello" -> "hello"
     --index;
     return decodeBencodedString(encoded_value, index);
   } else if (isEncodedNum(encoded_value)) {
@@ -268,7 +266,7 @@ std::vector<std::string> parseTorrentFile(const std::string& filename) {
   return res;
 }
 
-json openTorrentFile(std::string filename) {
+json openTorrentFile(const std::string& filename) {
   std::vector<std::string> res;
   std::fstream fs;
   fs.open(filename, std::ios::in | std::ios::binary);
@@ -478,19 +476,9 @@ struct piece_msg {
   std::vector<unsigned char> payload;
 };
 
-std::vector<unsigned char> readPayload(const int& socket, const size_t& size) {
-  std::vector<unsigned char> buffer(size);
-  ssize_t bytesRead = recv(socket, buffer.data(), buffer.size(), 0);
-  if (bytesRead == -1) {
-    std::cerr << "Error receiving data" << std::endl;
-  } else {
-    buffer[bytesRead] = '\0';
-  }
-  return buffer;
-}
 
 std::pair<int, std::vector<unsigned char>> recvMsg(const int& socket) {
-  uint32_t* len_adr = new uint32_t;
+  auto* len_adr = new uint32_t;
   ssize_t len_red = recv(socket, len_adr, 4, 0);
   uint32_t length = ntohl(*len_adr);
   delete (len_adr);
@@ -498,7 +486,7 @@ std::pair<int, std::vector<unsigned char>> recvMsg(const int& socket) {
     throw std::runtime_error("Received unexpected EOF");
   }
   uint8_t id;
-  ssize_t id_red = recv(socket, &id, 1, 0);
+  recv(socket, &id, 1, 0);
   std::vector<unsigned char> payload(length - 1);
   size_t done = 0;
   while (done < payload.size()) {
@@ -570,17 +558,10 @@ std::pair<uint32_t, std::string> saveBlock(std::vector<unsigned char> payload,
   return {block_offset, output_name};
 }
 
-std::pair<int, std::vector<unsigned char>> downloadBlock(const int& socket,
-                                                         const block& block) {
-  request_msg req_msg{13, 6, htonl(block.index), htonl(block.begin),
-                      htonl(block.length)};
-  sendMsg(socket, (void*)&req_msg, sizeof(req_msg));
-  return recvMsg(socket);
-}
 
 std::string calculateSHA1Hash(const std::string& filename) {
   EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-  EVP_DigestInit_ex(ctx, EVP_sha1(), NULL);
+  EVP_DigestInit_ex(ctx, EVP_sha1(), nullptr);
   FILE* file = fopen(filename.c_str(), "rb");
   char buffer[1024];
   while (true) {
@@ -739,13 +720,14 @@ bool downloadFile(const std::string& file, const std::string& address) {
   std::unordered_set<int> free_peers;
   std::vector<int> pieces;
   std::vector<std::vector<int>> available_peers(piece_num);
-  for (const auto peer : peers) {
+  for (const auto& peer : peers) {
     auto res = establishConnection(file, peer);
     reses[res.first] = res.second;
     free_peers.insert(res.first);
     getAvailablePieces(available_peers, res.first);
   }
-  for (int i = 0; i < piece_num; ++i) {
+  pieces.reserve(piece_num);
+for (int i = 0; i < piece_num; ++i) {
     pieces.push_back(i);
   }
   while (!pieces.empty()) {
@@ -758,17 +740,11 @@ bool downloadFile(const std::string& file, const std::string& address) {
       }
       free_peers.erase(socket);
       std::string piece_address = address + "_piece_" + std::to_string(piece);
-//      futures.emplace_back(piece, std::async(std::launch::async, process, socket, file, piece_address, piece));
       if (process(socket, file, piece_address, piece)) {
         pieces.erase(pieces.begin() + i);
       }
       free_peers.insert(socket);
     }
-//    for (int i = 0; i < futures.size(); ++i) {
-//      if (futures[i].second.get()) {
-//        pieces.erase(pieces.begin() + futures[i].first);
-//      }
-//    }
   }
   while (!free_peers.empty()) {
     int socket = *free_peers.begin();
@@ -854,14 +830,3 @@ int main(int argc, char* argv[]) {
   }
   return 0;
 }
-
-// int main() {
-//   std::string filename = "sample.torrent";
-//   std::string peer = "178.62.82.89:51470";
-//   establishConnection(filename, peer);
-//
-//   std::cout << ans.dump() << '\n';
-// }
-
-// sample.torrent
-//  178.62.82.89:51470
