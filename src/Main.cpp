@@ -16,6 +16,7 @@
 #include <span>
 #include <string>
 #include <thread>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -660,16 +661,39 @@ bool downloadPiece(const int& socket, const std::string& filename,
   if (piece_hash != file_hash) {
     return false;
   }
-  std::cout << piece << " downloaded correctly\n";
+//  std::cout << piece << " downloaded correctly\n";
   return true;
+}
+
+void getAvailablePieces(std::vector<std::vector<int>>& available_peers, const int& socket) {
+//  std::cout << "payload of socket " << socket << '\n';
+  auto [id, payload] = recvMsg(socket);
+  size_t ix=0;
+  for (auto byte: payload) {
+    for (int i=0; i < 8; i++) {
+      if (byte & (128 >> i)) {
+        available_peers[ix].push_back(socket);
+      }
+      ++ix;
+    }
+  }
+  interest_unchoke_msg interest_msg{1, 2};
+  sendMsg(socket, (void*)&interest_msg, sizeof(interest_msg));
+//  std::cout << socket << " here\n";
+  std::tie(id, payload) = recvMsg(socket);
+}
+
+int getFreePeers(const std::vector<int>& peersPithCurrPiece, const std::unordered_set<int>& free_peers) {
+  for (const auto peer : peersPithCurrPiece) {
+    if (free_peers.contains(peer)) {
+      return peer;
+    }
+  }
+  return -1;
 }
 
 bool process(const int& socket, const std::string& filename,
              const std::string& address, const int& piece) {
-  auto [id, payload] = recvMsg(socket);
-  interest_unchoke_msg interest_msg{1, 2};
-  sendMsg(socket, (void*)&interest_msg, sizeof(interest_msg));
-  std::tie(id, payload) = recvMsg(socket);
 
   auto res = parseTorrentFile(filename);
   size_t file_length = std::stoul(res[1].substr(8));
@@ -703,45 +727,64 @@ bool downloadFile(const std::string& file, const std::string& address) {
   size_t piece_num = (file_length - 1) / piece_length + 1;
   std::vector<std::string> peers = sendRequest(file);
   std::unordered_map<int, std::string> reses;
-  std::queue<int> free_peers;
-  std::queue<int> pieces;
+  std::unordered_set<int> free_peers;
+  std::vector<int> pieces;
+  std::vector<std::vector<int>> available_peers(piece_num);
   for (const auto peer : peers) {
     auto res = establishConnection(file, peer);
     reses[res.first] = res.second;
-    free_peers.push(res.first);
+    free_peers.insert(res.first);
+    getAvailablePieces(available_peers, res.first);
   }
   for (int i = 0; i < piece_num; ++i) {
-    pieces.push(i);
+    pieces.push_back(i);
   }
-  bool ans = true;
-  std::vector<int> pieces_taken;
   while (!pieces.empty()) {
-    std::vector<std::future<bool>> futures;
-    size_t len = std::min(pieces.size(), peers.size());
-    pieces_taken = std::vector<int>(len);
-    for (int i = 0; i < len; ++i) {
-      int piece = pieces.front();
-      pieces_taken[i] = piece;
-      pieces.pop();
-      int socket = free_peers.front();
-      free_peers.pop();
-      std::string piece_address = address + "_piece_" + std::to_string(piece);
-      futures.emplace_back(std::async(std::launch::async, process, socket, file, piece_address, piece));
-      free_peers.push(socket);
-    }
-    for (int i = 0; i < len; ++i) {
-      if (!futures[i].get()) {
-        pieces.push(pieces_taken[i]);
+    for (int i = 0; i < pieces.size(); ++i) {
+      int piece = pieces[i];
+      int socket = getFreePeers(available_peers[piece], free_peers);
+      if (socket == -1) {
+        continue;
       }
+      free_peers.erase(socket);
+      std::string piece_address = address + "_piece_" + std::to_string(piece);
+      if (process(socket, file, piece_address, piece)) {
+        pieces.erase(pieces.begin() + i);
+      }
+      free_peers.insert(socket);
     }
   }
+//  bool ans = true;
+//  std::vector<int> pieces_taken;
+//  while (!pieces.empty()) {
+//    std::vector<std::future<bool>> futures;
+//    size_t len = std::min(pieces.size(), free_peers.size());
+//    pieces_taken = std::vector<int>(len);
+//    for (int i = 0; i < len; ++i) {
+//      int piece = pieces[i];
+//      pieces_taken[i] = piece;
+//      int socket = getFreePeers(available_peers[piece], free_peers);
+//      if (socket == -1) {
+//        continue;
+//      }
+//      free_peers.erase(socket);
+//      std::string piece_address = address + "_piece_" + std::to_string(piece);
+//      futures.emplace_back(std::async(std::launch::async, process, socket, file, piece_address, piece));
+//      free_peers.insert(socket);
+//    }
+//    for (int i = 0; i < len; ++i) {
+//      if (futures[i].get()) {
+//        pieces.erase(pieces.begin() + i);
+//      }
+//    }
+//  }
   while (!free_peers.empty()) {
-    int socket = free_peers.front();
-    free_peers.pop();
+    int socket = *free_peers.begin();
+    free_peers.erase(socket);
     close(socket);
   }
   gatherPieces(address, piece_num);
-  return ans;
+  return pieces.empty();
 }
 
 int main(int argc, char* argv[]) {
