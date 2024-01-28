@@ -658,10 +658,12 @@ bool downloadPiece(const int& socket, const std::string& filename,
   }
   outfile.close();
   auto file_hash = calculateSHA1Hash(address);
+  std::cout << piece_hash << " piece hash\n";
+  std::cout << file_hash << " file hash\n";
   if (piece_hash != file_hash) {
     return false;
   }
-//  std::cout << piece << " downloaded correctly\n";
+  std::cout << piece << " downloaded correctly\n";
   return true;
 }
 
@@ -756,7 +758,7 @@ bool downloadFile(const std::string& file, const std::string& address) {
       }
       free_peers.erase(socket);
       std::string piece_address = address + "_piece_" + std::to_string(piece);
-      futures.emplace_back(piece, std::async(std::launch::async, process, socket, file, piece_address, piece));
+//      futures.emplace_back(piece, std::async(std::launch::async, process, socket, file, piece_address, piece));
       if (process(socket, file, piece_address, piece)) {
         pieces.erase(pieces.begin() + i);
       }
@@ -768,30 +770,6 @@ bool downloadFile(const std::string& file, const std::string& address) {
 //      }
 //    }
   }
-//  bool ans = true;
-//  std::vector<int> pieces_taken;
-//  while (!pieces.empty()) {
-//    std::vector<std::future<bool>> futures;
-//    size_t len = std::min(pieces.size(), free_peers.size());
-//    pieces_taken = std::vector<int>(len);
-//    for (int i = 0; i < len; ++i) {
-//      int piece = pieces[i];
-//      pieces_taken[i] = piece;
-//      int socket = getFreePeers(available_peers[piece], free_peers);
-//      if (socket == -1) {
-//        continue;
-//      }
-//      free_peers.erase(socket);
-//      std::string piece_address = address + "_piece_" + std::to_string(piece);
-//      futures.emplace_back(std::async(std::launch::async, process, socket, file, piece_address, piece));
-//      free_peers.insert(socket);
-//    }
-//    for (int i = 0; i < len; ++i) {
-//      if (futures[i].get()) {
-//        pieces.erase(pieces.begin() + i);
-//      }
-//    }
-//  }
   while (!free_peers.empty()) {
     int socket = *free_peers.begin();
     free_peers.erase(socket);
